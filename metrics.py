@@ -5,8 +5,7 @@ import random
 import math
 
 
-def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, label_map,
-                  device='cuda:0'):
+def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, label_map, device='cuda:0'):
     """
     Calculate the Mean Average Precision (mAP) of detected objects.
 
@@ -23,8 +22,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     :return: list of average precisions for all classes, mean average precision (mAP)
     """
     assert len(det_boxes) == len(det_labels) == len(det_scores) == len(true_boxes) == len(
-        true_labels) == len(
-        true_difficulties)  # these are all lists of tensors of the same length, i.e. number of images
+        true_labels)  # these are all lists of tensors of the same length, i.e. number of images
     n_classes = len(label_map)
     rev_label_map = {v: k for k, v in label_map.items()}
 
@@ -36,7 +34,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
         device)  # (n_objects), n_objects is the total no. of objects across all images
     true_boxes = torch.cat(true_boxes, dim=0)  # (n_objects, 4)
     true_labels = torch.cat(true_labels, dim=0)  # (n_objects)
-    true_difficulties = torch.cat(true_difficulties, dim=0)  # (n_objects)
+    # true_difficulties = torch.cat(true_difficulties, dim=0)  # (n_objects)
 
     assert true_images.size(0) == true_boxes.size(0) == true_labels.size(0)
 
@@ -57,12 +55,12 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
         # Extract only objects with this class
         true_class_images = true_images[true_labels == c]  # (n_class_objects)
         true_class_boxes = true_boxes[true_labels == c]  # (n_class_objects, 4)
-        true_class_difficulties = true_difficulties[true_labels == c]  # (n_class_objects)
-        n_easy_class_objects = (1 - true_class_difficulties).sum().item()  # ignore difficult objects
+        # true_class_difficulties = true_difficulties[true_labels == c]  # (n_class_objects)
+        n_easy_class_objects = (true_labels == c).long().sum().item()  # ignore difficult objects
 
         # Keep track of which true objects with this class have already been 'detected'
         # So far, none
-        true_class_boxes_detected = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(
+        true_class_boxes_detected = torch.zeros((true_labels.size(0)), dtype=torch.uint8).to(
             device)  # (n_class_objects)
 
         # Extract only detections with this class
@@ -87,7 +85,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
             # Find objects in the same image with this class, their difficulties, and whether they have been detected before
             object_boxes = true_class_boxes[true_class_images == this_image]  # (n_class_objects_in_img)
-            object_difficulties = true_class_difficulties[true_class_images == this_image]  # (n_class_objects_in_img)
+            # object_difficulties = true_class_difficulties[true_class_images == this_image]  # (n_class_objects_in_img)
             # If no such object in this image, then the detection is a false positive
             if object_boxes.size(0) == 0:
                 false_positives[d] = 1
@@ -97,23 +95,15 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             overlaps = find_jaccard_overlap(this_detection_box, object_boxes)  # (1, n_class_objects_in_img)
             max_overlap, ind = torch.max(overlaps.squeeze(0), dim=0)  # (), () - scalars
 
-            # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
-            # In the original class-level tensors 'true_class_boxes', etc., 'ind' corresponds to object with index...
             original_ind = torch.LongTensor(range(true_class_boxes.size(0)))[true_class_images == this_image][ind]
-            # We need 'original_ind' to update 'true_class_boxes_detected'
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match
             if max_overlap.item() > 0.5:
-                # If the object it matched with is 'difficult', ignore it
-                if object_difficulties[ind] == 0:
-                    # If this object has already not been detected, it's a true positive
-                    if true_class_boxes_detected[original_ind] == 0:
-                        true_positives[d] = 1
-                        true_class_boxes_detected[original_ind] = 1  # this object has now been detected/accounted for
-                    # Otherwise, it's a false positive (since this object is already accounted for)
-                    else:
-                        false_positives[d] = 1
-            # Otherwise, the detection occurs in a different location than the actual object, and is a false positive
+                if true_class_boxes_detected[original_ind] == 0:
+                    true_positives[d] = 1
+                    true_class_boxes_detected[original_ind] = 1
+                else:
+                    false_positives[d] = 1
             else:
                 false_positives[d] = 1
 

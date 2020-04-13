@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .iou_utils import match_ious, bbox_overlaps_iou, bbox_overlaps_ciou, bbox_overlaps_diou, bbox_overlaps_giou, \
     decode, match, log_sum_exp
+from torch.autograd import Variable
 
 
 class FocalLoss(nn.Module):
@@ -28,7 +29,7 @@ class FocalLoss(nn.Module):
         if alpha is None:
             self.alpha = torch.ones(class_num, 1)
         else:
-            if isinstance(alpha, nn.Variable):
+            if isinstance(alpha, Variable):
                 self.alpha = alpha
             else:
                 self.alpha = alpha
@@ -42,7 +43,7 @@ class FocalLoss(nn.Module):
         C = inputs.size(1)
         P = F.softmax(inputs, dim=1)
         class_mask = inputs.data.new(N, C).fill_(0)
-        class_mask = nn.Variable(class_mask)
+        class_mask = Variable(class_mask)
         ids = targets.view(-1, 1)
         class_mask.scatter_(1, ids.data, 1.)
 

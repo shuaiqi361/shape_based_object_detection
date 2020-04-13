@@ -21,7 +21,7 @@ class PascalVOCDataset(Dataset):
         self.input_size = input_size
         assert config is not None
         self.config = config
-        assert self.split in {'TRAIN', 'TEST'}
+        assert self.split in {'TRAIN', 'TEST', 'VAL'}
 
         self.data_folder = data_folder
 
@@ -46,7 +46,8 @@ class PascalVOCDataset(Dataset):
 
         # Apply transformations
         image, boxes, labels, = transform(image, boxes, labels,
-                                          split=self.split, operation_list=self.config.model['operation_list'])
+                                          split=self.split, resize_dim=self.input_size,
+                                          operation_list=self.config.model['operation_list'])
 
         return image, boxes, labels, ids
 
@@ -121,7 +122,8 @@ class COCO17Dataset(Dataset):
 
         # Apply transformations
         image, boxes, labels = transform(image, boxes, labels,
-                                         split=self.split, operation_list=self.config.model['operation_list'])
+                                         split=self.split, resize_dim=self.input_size,
+                                         operation_list=self.config.model['operation_list'])
         return image, boxes, labels, ids
 
     def __len__(self):

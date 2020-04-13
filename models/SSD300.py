@@ -84,6 +84,7 @@ class VGGBase(nn.Module):
         conv7_feats = F.relu(self.conv7(out))  # (N, 1024, 19, 19)
 
         # Lower-level feature maps
+        # print(conv4_3_feats.size(), conv7_feats.size())
         return conv4_3_feats, conv7_feats
 
     def load_pretrained_layers(self):
@@ -184,6 +185,7 @@ class AuxiliaryConvolutions(nn.Module):
         conv11_2_feats = F.relu(self.conv11_2(out))  # (N, 256, 1, 1)
 
         # Higher-level feature maps
+        # print(conv8_2_feats.size(), conv9_2_feats.size(), conv10_2_feats.size(), conv11_2_feats.size())
         return conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats
 
 
@@ -318,9 +320,9 @@ class PredictionConvolutions(nn.Module):
         # A total of 22536 boxes
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
         locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2, l_conv11_2],
-                         dim=1)  # (N, 22536, 4)
+                         dim=1)
         classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2, c_conv10_2, c_conv11_2],
-                                   dim=1)  # (N, 22536, n_classes)
+                                   dim=1)
 
         return locs, classes_scores
 
@@ -453,7 +455,6 @@ class SSD300(nn.Module):
         :param top_k: if there are a lot of resulting detection across all classes, keep only the top 'k'
         :return: detections (boxes, labels, and scores), lists of length batch_size
         """
-        # print('In detect_objects: ')
         batch_size = predicted_locs.size(0)
         n_priors = self.priors_cxcy.size(0)
         # print(n_priors, predicted_locs.size(), predicted_scores.size())
@@ -565,16 +566,17 @@ class MultiBoxLoss300(nn.Module):
     def __init__(self, priors_cxcy, config, threshold=0.5, alpha=5.):
         super(MultiBoxLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
-        # self.priors_xy = cxcy_to_xy(priors_cxcy)
+        self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
         # self.neg_pos_ratio = neg_pos_ratio
         self.alpha = alpha
         self.device = config.device
+        self.n_classes = config.n_classes
 
         # self.smooth_l1 = nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = FocalLoss()
+        self.Focal_loss = FocalLoss(class_num=self.n_classes)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
@@ -627,10 +629,11 @@ class MultiBoxLoss300(nn.Module):
             overlap_for_each_prior[prior_for_each_object] = 1.
 
             # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]  # (22536), labels[i] is (n_object)
+            label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0  # (22536)
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
 
             # Store
             true_classes[i] = label_for_each_prior
@@ -640,7 +643,8 @@ class MultiBoxLoss300(nn.Module):
             decoded_locs[i] = predicted_locs[i]
 
         # Identify priors that are positive (object/non-background)
-        positive_priors = true_classes != 0  # (N, 22536)
+        positive_priors = true_classes > 0  # (N, 22536)
+        negative_priors = true_classes == 0
 
         # LOCALIZATION LOSS
 
@@ -649,7 +653,11 @@ class MultiBoxLoss300(nn.Module):
         loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
-        conf_loss = self.Focal_loss(predicted_scores.view(-1, n_classes), true_classes.view(-1))
+        predicted_objects = torch.cat([predicted_scores[positive_priors], predicted_scores[negative_priors]], dim=0)
+        target_class = torch.cat([true_classes[positive_priors], true_classes[negative_priors]], dim=0)
+        # print(predicted_objects.size(), target_class.size(), positive_priors.size(), true_classes.size())
+
+        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes), target_class.view(-1))
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss

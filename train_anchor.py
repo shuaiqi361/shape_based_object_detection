@@ -119,6 +119,8 @@ def main():
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=True)
+    else:
+        raise NotImplementedError
 
     if args.evaluate:
         assert args.load_path is not None
@@ -156,7 +158,7 @@ def main():
     decay_lr_at = [it // (len(train_dataset) // config.internal_batchsize) for it in
                    decay_lr_at]  # calculate epoch to decay
     print('total train epochs: ', epochs, ' training starts ......')
-    str_print = 'Dataset size: {}'.format(len(train_dataset) * config.internal_batchsize)
+    str_print = 'Dataset size: {}'.format(len(train_dataset))
     config.logger.info(str_print)
 
     # Epochs
@@ -178,7 +180,7 @@ def main():
               epoch=epoch, config=config)
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 5:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
             _, current_mAP = evaluate(test_loader, model, epoch, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -280,12 +282,11 @@ def evaluate(test_loader, model, epoch, config):
     det_scores = list()
     true_boxes = list()
     true_labels = list()
-    true_difficulties = list()  # it is necessary to know which objects are 'difficult', see 'calculate_mAP' in utils.py
     detect_speed = list()
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, ids) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
 
             # Forward prop.
@@ -307,18 +308,16 @@ def evaluate(test_loader, model, epoch, config):
             # Store this batch's results for mAP calculation
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
-            difficulties = [d.to(config.device) for d in difficulties]
 
             det_boxes.extend(det_boxes_batch)
             det_labels.extend(det_labels_batch)
             det_scores.extend(det_scores_batch)
             true_boxes.extend(boxes)
             true_labels.extend(labels)
-            true_difficulties.extend(difficulties)
             detect_speed.append((time_end - time_start) / len(labels))
 
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties,
+        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels,
                                  config.label_map, config.device)
 
     # Print AP for each class

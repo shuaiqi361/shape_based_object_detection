@@ -77,9 +77,10 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
         for id in ids:
             # Parse annotation's XML file
             objects = parse_annotation(os.path.join(path, 'Annotations', id + '.xml'))
-            if len(objects) == 0:
+            if len(objects['labels']) == 0:
+                print('No objects in image, ignored.')
                 continue
-            n_objects += len(objects)
+            n_objects += len(objects['labels'])
             train_objects.append(objects)
             train_images.append(os.path.join(path, 'JPEGImages', id + '.jpg'))
 
@@ -108,10 +109,10 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
     for id in ids:
         # Parse annotation's XML file
         objects = parse_annotation(os.path.join(voc07_path, 'Annotations', id + '.xml'))
-        if len(objects) == 0:
+        if len(objects['labels']) == 0:
             continue
         test_objects.append(objects)
-        n_objects += len(objects)
+        n_objects += len(objects['labels'])
         test_images.append(os.path.join(voc07_path, 'JPEGImages', id + '.jpg'))
 
     assert len(test_objects) == len(test_images)
@@ -127,8 +128,8 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
 
 
 if __name__ == '__main__':
-    voc07_path = '/home/keyi/research/data/VOC_2007/VOCdevkit/VOC2007'
-    voc12_path = '/home/keyi/research/data/VOC_2012/VOCdevkit/VOC2012'
-    output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/VOC'
+    voc07_path = '/home/keyi/Documents/Data/VOC_2007/VOC_2007_merge/VOC2007'
+    voc12_path = '/home/keyi/Documents/Data/VOC_2012/VOCdevkit/VOC2012'
+    output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/VOC'
 
     create_data_lists(voc07_path, voc12_path, output_folder)

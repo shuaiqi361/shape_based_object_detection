@@ -314,10 +314,6 @@ def transform(image, boxes, labels, split, resize_dim, operation_list=['expand',
         # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
         new_image = photometric_distort(new_image)
 
-        # Flip image with a 50% chance
-        if random.random() < 0.5:
-            new_image, new_boxes = flip(new_image, new_boxes)
-
         # Convert PIL image to Torch tensor
         new_image = FT.to_tensor(new_image)
 
@@ -332,6 +328,9 @@ def transform(image, boxes, labels, split, resize_dim, operation_list=['expand',
 
         # Convert Torch tensor to PIL image
         new_image = FT.to_pil_image(new_image)
+        # Flip image with a 50% chance
+        if random.random() < 0.5:
+            new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image
     new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim)

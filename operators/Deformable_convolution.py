@@ -17,16 +17,16 @@ class DeformConv2d(nn.Module):
 
         self.p_conv = nn.Conv2d(inc, 2 * kernel_size * kernel_size, kernel_size=3, padding=1, stride=stride)
         nn.init.constant_(self.p_conv.weight, 0)
-        self.p_conv.register_backward_hook(self.set_lr)
+        self.p_conv.register_backward_hook(self._set_lr)
 
         self.modulation = modulation
         if modulation:
             self.m_conv = nn.Conv2d(inc, kernel_size * kernel_size, kernel_size=3, padding=1, stride=stride)
             nn.init.constant_(self.m_conv.weight, 0)
-            nn.init.constant_(self.m_conv.bias, 0.5)
-            self.m_conv.register_backward_hook(self.set_lr)
+            self.m_conv.register_backward_hook(self._set_lr)
 
-    def set_lr(self, module, grad_input, grad_output):
+    @staticmethod
+    def _set_lr(module, grad_input, grad_output):
         grad_input = (grad_input[i] * 0.1 for i in range(len(grad_input)))
         grad_output = (grad_output[i] * 0.1 for i in range(len(grad_output)))
 
