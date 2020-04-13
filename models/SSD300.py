@@ -138,10 +138,10 @@ class AuxiliaryConvolutions(nn.Module):
         super(AuxiliaryConvolutions, self).__init__()
 
         self.conv8_1 = nn.Conv2d(1024, 256, kernel_size=1, padding=0)  # stride = 1, by default
-        self.conv8_2 = DeformConv2d(256, 512, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
+        self.conv8_2 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
 
         self.conv9_1 = nn.Conv2d(512, 128, kernel_size=1, padding=0)
-        self.conv9_2 = DeformConv2d(128, 256, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
+        self.conv9_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
 
         self.conv10_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
         self.conv10_2 = nn.Conv2d(128, 256, kernel_size=3, padding=0)  # dim. reduction because padding = 0
@@ -377,13 +377,13 @@ class SSD300(nn.Module):
                                                conv9_2_feats, conv10_2_feats,
                                                conv11_2_feats)  # (N, 22536, 4), (N, 22536, n_classes)
 
-        return self.offset2bbox(locs), classes_scores
+        return locs, classes_scores
 
     def offset2bbox(self, predicted_offsets):
         predicted_bbox = torch.cat([self.priors_cxcy[:, :2].unsqueeze(0).repeat(
-                            predicted_offsets.size(0), 1, 1) - predicted_offsets[:, :, :2],
+            predicted_offsets.size(0), 1, 1) - predicted_offsets[:, :, :2],
                                     self.priors_cxcy[:, :2].unsqueeze(0).repeat(
-                            predicted_offsets.size(0), 1, 1) + predicted_offsets[:, :, 2:]], dim=2)
+                                        predicted_offsets.size(0), 1, 1) + predicted_offsets[:, :, 2:]], dim=2)
         return predicted_bbox
 
     def create_prior_boxes(self):
@@ -470,7 +470,7 @@ class SSD300(nn.Module):
 
         for i in range(batch_size):
             # Decode object coordinates from the form we regressed predicted boxes to
-            decoded_locs = predicted_locs[i].clamp_(0, 1)
+            decoded_locs = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))
 
             # Lists to store boxes and scores for this image
             image_boxes = list()
@@ -576,7 +576,7 @@ class MultiBoxLoss300(nn.Module):
         # self.smooth_l1 = nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = FocalLoss(class_num=self.n_classes)
+        self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=False)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
@@ -640,11 +640,13 @@ class MultiBoxLoss300(nn.Module):
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
             true_locs[i] = boxes[i][object_for_each_prior]
-            decoded_locs[i] = predicted_locs[i]
+            decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
-        positive_priors = true_classes > 0  # (N, 22536)
+        positive_priors = true_classes > 0
         negative_priors = true_classes == 0
+
+        n_positives = positive_priors.sum(dim=1)
 
         # LOCALIZATION LOSS
 
@@ -657,7 +659,8 @@ class MultiBoxLoss300(nn.Module):
         target_class = torch.cat([true_classes[positive_priors], true_classes[negative_priors]], dim=0)
         # print(predicted_objects.size(), target_class.size(), positive_priors.size(), true_classes.size())
 
-        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes), target_class.view(-1))
+        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
+                                    target_class.view(-1)) / n_positives.sum().float()
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss

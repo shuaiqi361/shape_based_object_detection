@@ -180,14 +180,14 @@ def main():
               epoch=epoch, config=config)
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
             _, current_mAP = evaluate(test_loader, model, epoch, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
                 save_checkpoint(epoch, model, optimizer,
-                                name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.model['arch'].lower(),
-                                                                                   config.data_name.lower(),
-                                                                                   config.save_path, epoch))
+                                name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+                                                                                   config.model['arch'].lower(),
+                                                                                   config.data_name.lower(), epoch))
                 best_mAP = current_mAP
 
     # Save the last checkpoint if it is better
@@ -195,9 +195,9 @@ def main():
     config.tb_logger.add_scalar('mAP', current_mAP, epoch)
     if current_mAP > best_mAP:
         save_checkpoint(epoch, model, optimizer,
-                        name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.model['arch'].lower(),
-                                                                           config.data_name.lower(),
-                                                                           config.save_path, epoch))
+                        name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+                                                                           config.model['arch'].lower(),
+                                                                           config.data_name.lower(), epoch))
 
 
 def train(train_loader, model, criterion, optimizer, epoch, config):
