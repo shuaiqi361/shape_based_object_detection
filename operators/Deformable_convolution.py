@@ -136,7 +136,8 @@ class DeformConv2d(nn.Module):
 
         return x_offset
 
-    def _reshape_x_offset(self, x_offset, ks):
+    @staticmethod
+    def _reshape_x_offset(x_offset, ks):
         b, c, h, w, N = x_offset.size()
         x_offset = torch.cat([x_offset[..., s:s + ks].contiguous().view(b, c, h, w * ks) for s in range(0, N, ks)],
                              dim=-1)
