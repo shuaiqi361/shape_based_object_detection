@@ -6,7 +6,7 @@ from .iou_utils import match_ious, bbox_overlaps_iou, bbox_overlaps_ciou, bbox_o
 from torch.autograd import Variable
 
 
-def focal_loss(y_pred, y_true, alpha=0.25, gamma=2, device='cuda:0'):
+def focal_loss(y_pred, y_true, alpha=0.25, gamma=2., device='cuda:0'):
     if isinstance(alpha, (list, tuple)):
         fore_alpha = alpha[0]  # postive sample ratio in the entire dataset
         back_alpha = alpha[1]  # (1-alpha) # negative ratio in the entire dataset
