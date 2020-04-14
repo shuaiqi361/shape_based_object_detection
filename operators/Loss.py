@@ -6,6 +6,37 @@ from .iou_utils import match_ious, bbox_overlaps_iou, bbox_overlaps_ciou, bbox_o
 from torch.autograd import Variable
 
 
+def focal_loss(y_pred, y_true, alpha=0.25, gamma=2, device='cuda:0'):
+    if isinstance(alpha, (list, tuple)):
+        fore_alpha = alpha[0]  # postive sample ratio in the entire dataset
+        back_alpha = alpha[1]  # (1-alpha) # negative ratio in the entire dataset
+    elif isinstance(alpha, (int, float)):
+        fore_alpha = alpha
+        back_alpha = (1 - alpha)
+
+    n_positives = (y_true != 0).sum()  # all postive anchors for 20 class
+
+    y_true = torch.eye(y_pred.shape[-1])[y_true].to(device)  # one hot vector for all prediction
+    y_pred = F.softmax(y_pred, dim=1)  # apply softmax
+
+    # in the dataset background classes is taken in the front so 1 background class + 20 classes = 21 classes
+    back_pred = y_pred[:, 0:1]  # 1st column background
+    fore_pred = y_pred[:, 1:]  # 20 columns foreground
+    back_true = y_true[:, 0:1]  # 1st column background
+    fore_true = y_true[:, 1:]  # 20 columns foreground
+
+    alpha_factor = torch.cat([back_true * back_alpha, fore_true * fore_alpha], dim=1)  ## alpha factor
+
+    focal_weight = torch.cat([back_true * back_pred, fore_true * (1 - fore_pred)],
+                             dim=1)  # because background is also a class so (1-back_true) will lead to false output
+
+    cross_entropy = -1 * torch.log(y_pred)  # normal cross entropy
+    loss = alpha_factor * (focal_weight ** gamma) * cross_entropy  # focal loss with modulating factor
+
+    # normalize the loss with positive anchors
+    return loss.sum() / n_positives  # if want to use it for anything else other then SSD use loss = loss.sum()/len(y_pred)
+
+
 class FocalLoss(nn.Module):
     """
         This criterion is a implemenation of Focal Loss, which is proposed in

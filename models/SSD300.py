@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, FocalLoss
+from operators.Loss import IouLoss, FocalLoss, focal_loss
 from metrics import find_jaccard_overlap
 
 
@@ -563,7 +563,7 @@ class MultiBoxLoss300(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=25.):
+    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=5.):
         super(MultiBoxLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -572,11 +572,13 @@ class MultiBoxLoss300(nn.Module):
         self.alpha = alpha
         self.device = config.device
         self.n_classes = config.n_classes
+        self.config = config
 
-        # self.smooth_l1 = nn.L1Loss()
+        self.smooth_l1 = nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
+        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
+        self.Focal_loss = focal_loss
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
@@ -646,20 +648,48 @@ class MultiBoxLoss300(nn.Module):
         positive_priors = true_classes > 0
         negative_priors = true_classes == 0
 
-        n_positives = positive_priors.sum(dim=1)
-
         # LOCALIZATION LOSS
-
-        # Localization loss is computed only over positive (non-background) priors
-        # loc_loss = self.smooth_l1(predicted_locs[positive_priors], true_locs[positive_priors])  # (), scalar
-        loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
+        if self.config.reg_loss.upper() == 'DIOU':
+            loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4),
+                                      true_locs[positive_priors].view(-1, 4))
+        else:
+            loc_loss = self.smooth_l1(decoded_locs[positive_priors].view(-1, 4),
+                                      true_locs[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
-        predicted_objects = torch.cat([predicted_scores[positive_priors], predicted_scores[negative_priors]], dim=0)
-        target_class = torch.cat([true_classes[positive_priors], true_classes[negative_priors]], dim=0)
-        # print(predicted_objects.size(), target_class.size(), positive_priors.size(), true_classes.size())
+        if self.config.cls_loss.upper() == 'FOCAL':
+            predicted_objects = torch.cat([predicted_scores[positive_priors],
+                                           predicted_scores[negative_priors]], dim=0)
+            target_class = torch.cat([true_classes[positive_priors],
+                                      true_classes[negative_priors]], dim=0)
+            conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
+                                        target_class.view(-1), device=self.device)
+        else:
+            # Number of positive and hard-negative priors per image
+            n_positives = positive_priors.sum(dim=1)  # (N)
+            n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
-        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes), target_class.view(-1)) / n_positives.sum().float()
+            # First, find the loss for all priors
+            conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes),
+                                               true_classes.view(-1))  # (N * 8732)
+            conf_loss_all = conf_loss_all.view(batch_size, n_priors)  # (N, 8732)
+
+            # We already know which priors are positive
+            conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
+
+            # Next, find which priors are hard-negative
+            # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
+            conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
+            conf_loss_neg[
+                positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+            conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, 8732), sorted by decreasing hardness
+            hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
+                self.device)  # (N, 8732)
+            hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
+            conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+
+            # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
+            conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
