@@ -172,7 +172,8 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
+        # with torch.no_grad():
+        evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
@@ -274,7 +275,8 @@ def evaluate(test_loader, model, optimizer, config):
     """
 
     # Make sure it's in eval mode
-    model.eval()
+    model.train()
+
     pp = pprint.PrettyPrinter()
 
     # Lists to store detected and true boxes, labels, scores
@@ -285,10 +287,14 @@ def evaluate(test_loader, model, optimizer, config):
     true_labels = list()
     detect_speed = list()
 
-    with torch.no_grad():
+    # with torch.no_grad():
+    print('IF true comes here.')
+    if True:
         # Batches
         for i, (images, boxes, labels, _) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
+            boxes = [b.to(config.device) for b in boxes]
+            labels = [l.to(config.device) for l in labels]
 
             # Forward prop.
             time_start = time.time()
@@ -306,10 +312,7 @@ def evaluate(test_loader, model, optimizer, config):
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200
             # for fair comparision with the paper's results and other repos
-
-            # Store this batch's results for mAP calculation
-            boxes = [b.to(config.device) for b in boxes]
-            labels = [l.to(config.device) for l in labels]
+            print('After detect..')
 
             det_boxes.extend(det_boxes_batch)
             det_labels.extend(det_labels_batch)
