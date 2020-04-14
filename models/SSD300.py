@@ -563,7 +563,7 @@ class MultiBoxLoss300(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=5.):
+    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=25.):
         super(MultiBoxLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -576,7 +576,7 @@ class MultiBoxLoss300(nn.Module):
         # self.smooth_l1 = nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=False)
+        self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
@@ -659,8 +659,7 @@ class MultiBoxLoss300(nn.Module):
         target_class = torch.cat([true_classes[positive_priors], true_classes[negative_priors]], dim=0)
         # print(predicted_objects.size(), target_class.size(), positive_priors.size(), true_classes.size())
 
-        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                    target_class.view(-1)) / n_positives.sum().float()
+        conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes), target_class.view(-1)) / n_positives.sum().float()
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
