@@ -105,20 +105,20 @@ def main():
         train_dataset = COCO17Dataset(train_data_folder, split='train', input_size=input_size, config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=True)
+                                                   pin_memory=False)
         test_dataset = COCO17Dataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
-                                                  pin_memory=True)
+                                                  pin_memory=False)
     elif config.data_name.upper() == 'VOC':
         train_dataset = PascalVOCDataset(train_data_folder, split='train', input_size=input_size, config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=True)
+                                                   pin_memory=False)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
-                                                  pin_memory=True)
+                                                  pin_memory=False)
     else:
         raise NotImplementedError
 
@@ -172,7 +172,7 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
+        _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
