@@ -215,8 +215,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     # print('In detect_objects: ')
     batch_size = predicted_locs.size(0)
     n_priors = priors_cxcy.size(0)
-    n_classes = predicted_scores.size(1)
-    # print(n_priors, predicted_locs.size(), predicted_scores.size())
+    n_classes = predicted_scores.size(2)
+    # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
     predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
 
     # Lists to store final predicted boxes, labels, and scores for all images
@@ -256,17 +256,13 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
             class_decoded_locs = decoded_locs[torch.nonzero(score_above_min_score)].squeeze(
                 dim=1)  # (n_qualified, 4)
 
-            print(class_scores.size(), class_decoded_locs.size())
-
             anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
-            print(anchor_nms_idx.size())
 
             # Store only unsuppressed boxes for this class
-            print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0))
+            # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0))
             image_boxes.append(class_decoded_locs[anchor_nms_idx, :])
             image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c]).to(device))
             image_scores.append(class_scores[anchor_nms_idx])
-            exit()
 
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:

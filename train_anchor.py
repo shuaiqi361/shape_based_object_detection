@@ -17,7 +17,7 @@ from scheduler import adjust_learning_rate
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset
 from utils import create_logger, save_checkpoint, clip_gradient
-from models.utils import detect_objects
+from models.utils import detect
 from metrics import AverageMeter, calculate_mAP
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
@@ -172,8 +172,7 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # with torch.no_grad():
-        evaluate(test_loader, model, optimizer, config=config)
+        # evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
@@ -287,9 +286,7 @@ def evaluate(test_loader, model, optimizer, config):
     true_labels = list()
     detect_speed = list()
 
-    # with torch.no_grad():
-    print('IF true comes here.')
-    if True:
+    with torch.no_grad():
         # Batches
         for i, (images, boxes, labels, _) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
@@ -302,17 +299,16 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = \
-                detect_objects(predicted_locs,
+                        detect(predicted_locs,
                                predicted_scores,
-                               min_score=0.01,
-                               max_overlap=0.45,
+                               min_score=0.05,
+                               max_overlap=0.5,
                                top_k=200, priors_cxcy=model.priors_cxcy,
-                               n_classes=model.n_classes, device=model.device)
+                               device=model.device)
 
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200
             # for fair comparision with the paper's results and other repos
-            print('After detect..')
 
             det_boxes.extend(det_boxes_batch)
             det_labels.extend(det_labels_batch)
