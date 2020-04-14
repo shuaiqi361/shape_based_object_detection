@@ -287,9 +287,7 @@ def evaluate(test_loader, model, optimizer, config):
     true_labels = list()
     detect_speed = list()
 
-    # with torch.no_grad():
-    print('IF true comes here.')
-    if True:
+    with torch.no_grad():
         # Batches
         for i, (images, boxes, labels, _) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
