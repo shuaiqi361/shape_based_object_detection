@@ -171,6 +171,6 @@ def create_data_lists_coco17(coco_root_path, output_folder):
 
 if __name__ == '__main__':
     coco_root_path = '/home/keyi/research/data/COCO17'
-    output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/COCO'
+    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/COCO'
 
     create_data_lists_coco17(coco_root_path, output_folder)

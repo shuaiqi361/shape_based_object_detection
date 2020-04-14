@@ -17,9 +17,9 @@ label_color_map = {k: distinct_colors[i] for i, k in enumerate(VOC_label_map.key
 
 
 '''
-There are 16551 training images containing a total of 49653 objects. 
+There are 16551 training images containing a total of 49653 objects.
 Files have been saved to /media/keyi/Data/Research/course_project/AdvancedCV_2020/data.
-There are 4952 test images containing a total of 14856 objects. 
+There are 4952 test images containing a total of 14856 objects.
 Files have been saved to /media/keyi/Data/Research/course_project/AdvancedCV_2020/data.
 '''
 
@@ -128,8 +128,8 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
 
 
 if __name__ == '__main__':
-    voc07_path = '/home/keyi/Documents/Data/VOC_2007/VOC_2007_merge/VOC2007'
-    voc12_path = '/home/keyi/Documents/Data/VOC_2012/VOCdevkit/VOC2012'
-    output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/VOC'
+    voc07_path = '/home/keyi/research/data/VOC_2007/VOCdevkit/VOC2007'
+    voc12_path = '/home/keyi/research/data/VOC_2012/VOCdevkit/VOC2012'
+    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/VOC'
 
     create_data_lists(voc07_path, voc12_path, output_folder)

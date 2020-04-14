@@ -129,6 +129,7 @@ def main():
         model = checkpoint['model']
         saved_epoch = checkpoint['epoch']
         model = model.to(config.device)
+        optimizer = checkpoint['optimizer']
 
         now = datetime.now()
         date_time = now.strftime("%m-%d-%Y_H-%M-%S")
@@ -137,7 +138,7 @@ def main():
                                                                                                    date_time)))
         print('Length of Testing Dataset:', len(test_dataset))
         print('evaluate checkpoint: ', args.load_path, ' at epoch: ', saved_epoch)
-        evaluate(test_loader, model, saved_epoch, config=config)
+        evaluate(test_loader, model, optimizer, config=config)
 
     cudnn.benchmark = True
     model = model.to(config.device)
@@ -171,7 +172,7 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # _, current_mAP = evaluate(test_loader, model, epoch, config=config)
+        # _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
@@ -181,7 +182,7 @@ def main():
 
         # Save checkpoint
         if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
-            _, current_mAP = evaluate(test_loader, model, epoch, config=config)
+            _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
                 save_checkpoint(epoch, model, optimizer,
@@ -191,7 +192,7 @@ def main():
                 best_mAP = current_mAP
 
     # Save the last checkpoint if it is better
-    _, current_mAP = evaluate(test_loader, model, epoch, config=config)
+    _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
     config.tb_logger.add_scalar('mAP', current_mAP, epoch)
     if current_mAP > best_mAP:
         save_checkpoint(epoch, model, optimizer,
@@ -264,7 +265,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     del predicted_locs, predicted_scores, images, boxes, labels
 
 
-def evaluate(test_loader, model, epoch, config):
+def evaluate(test_loader, model, optimizer, config):
     """
     Evaluate.
 
@@ -286,7 +287,7 @@ def evaluate(test_loader, model, epoch, config):
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, ids) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, _) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
 
             # Forward prop.
@@ -328,6 +329,8 @@ def evaluate(test_loader, model, epoch, config):
 
     str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
     config.logger.info(str_print)
+
+    del predicted_locs, predicted_scores, boxes, labels
 
     return APs, mAP
 

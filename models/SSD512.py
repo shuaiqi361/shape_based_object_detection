@@ -147,10 +147,10 @@ class AuxiliaryConvolutions(nn.Module):
         self.conv10_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
 
         self.conv11_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
 
-        self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.conv12_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=0)
+        self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1)
+        self.conv12_2 = nn.Conv2d(128, 256, kernel_size=2)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -217,8 +217,8 @@ class PredictionConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 4,
-                   'conv7': 6,
+        n_boxes = {'conv4_3': 1,
+                   'conv7': 4,
                    'conv8_2': 6,
                    'conv9_2': 6,
                    'conv10_2': 6,
@@ -340,9 +340,9 @@ class PredictionConvolutions(nn.Module):
         # A total of 22536 boxes
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
         locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2, l_conv11_2, l_conv12_2],
-                         dim=1)
+                         dim=1).contiguous()
         classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2, c_conv10_2, c_conv11_2, c_conv12_2],
-                                   dim=1)
+                                   dim=1).contiguous()
 
         return locs, classes_scores
 
@@ -397,6 +397,7 @@ class SSD512(nn.Module):
                                                conv9_2_feats, conv10_2_feats,
                                                conv11_2_feats, conv12_2_feats)  # (N, 22536, 4), (N, 22536, n_classes)
 
+        # print(conv4_3_feats.size(), conv8_2_feats.size(), conv10_2_feats.size(), conv12_2_feats.size())
         return locs, classes_scores
 
     def offset2bbox(self, predicted_offsets):
@@ -412,11 +413,11 @@ class SSD512(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'conv4_3': 32,
-                     'conv7': 16,
-                     'conv8_2': 8,
-                     'conv9_2': 4,
-                     'conv10_2': 2,
+        fmap_dims = {'conv4_3': 64,
+                     'conv7': 32,
+                     'conv8_2': 16,
+                     'conv9_2': 8,
+                     'conv10_2': 4,
                      'conv11_2': 2,
                      'conv12_2': 1}
 
@@ -428,8 +429,8 @@ class SSD512(nn.Module):
                       'conv11_2': 0.74,
                       'conv12_2': 0.9}
 
-        aspect_ratios = {'conv4_3': [1., 2., 0.5],
-                         'conv7': [1., 2., 3., 0.5, .333],
+        aspect_ratios = {'conv4_3': [1.],
+                         'conv7': [1., 2., 0.5],
                          'conv8_2': [1., 2., 3., 0.5, .333],
                          'conv9_2': [1., 2., 3., 0.5, .333],
                          'conv10_2': [1., 2., 3., 0.5, .333],
@@ -451,7 +452,7 @@ class SSD512(nn.Module):
 
                         # For an aspect ratio of 1, use an additional prior whose scale is the geometric mean of the
                         # scale of the current feature map and the scale of the next feature map
-                        if ratio == 1.:
+                        if ratio == 1. and fmap != 'conv4_3':
                             try:
                                 # use the geometric mean to calculate the additional scale for each level of fmap
                                 additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
@@ -460,7 +461,7 @@ class SSD512(nn.Module):
                                 additional_scale = 1.
                             prior_boxes.append([cx, cy, additional_scale, additional_scale])
 
-        prior_boxes = torch.FloatTensor(prior_boxes).to(self.device)
+        prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
         prior_boxes.clamp_(0, 1)
 
         return prior_boxes
@@ -579,7 +580,7 @@ class SSD512(nn.Module):
         return all_images_boxes, all_images_labels, all_images_scores  # lists of length batch_size
 
 
-class MultiBoxLoss300(nn.Module):
+class MultiBoxLoss512(nn.Module):
     """
     The MultiBox loss, a loss function for object detection.
     This is a combination of:
@@ -588,7 +589,7 @@ class MultiBoxLoss300(nn.Module):
     """
 
     def __init__(self, priors_cxcy, config, threshold=0.5, alpha=1., neg_pos_ratio=3):
-        super(MultiBoxLoss300, self).__init__()
+        super(MultiBoxLoss512, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
