@@ -563,12 +563,12 @@ class MultiBoxLoss300(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=5.):
+    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=5., neg_pos_ratio=3):
         super(MultiBoxLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
-        # self.neg_pos_ratio = neg_pos_ratio
+        self.neg_pos_ratio = neg_pos_ratio
         self.alpha = alpha
         self.device = config.device
         self.n_classes = config.n_classes
@@ -606,6 +606,7 @@ class MultiBoxLoss300(nn.Module):
         decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
         true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
+        true_neg_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
 
         # For each image
         for i in range(batch_size):
@@ -632,13 +633,17 @@ class MultiBoxLoss300(nn.Module):
 
             # Labels for each prior
             label_for_each_prior = labels[i][object_for_each_prior]
+            label_for_each_prior_neg_used = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
-            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
+            # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
+            # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior_neg_used[overlap_for_each_prior < self.threshold - 0.1] = -1
 
             # Store
             true_classes[i] = label_for_each_prior
+            true_neg_classes[i] = label_for_each_prior_neg_used
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
             true_locs[i] = boxes[i][object_for_each_prior]
@@ -646,7 +651,7 @@ class MultiBoxLoss300(nn.Module):
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
-        negative_priors = true_classes == 0
+        negative_priors = true_neg_classes == -1
 
         # LOCALIZATION LOSS
         if self.config.reg_loss.upper() == 'DIOU':
@@ -666,27 +671,29 @@ class MultiBoxLoss300(nn.Module):
                                         target_class.view(-1), device=self.device)
         else:
             # Number of positive and hard-negative priors per image
+            # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())
             n_positives = positive_priors.sum(dim=1)  # (N)
             n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
             # First, find the loss for all priors
-            conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes),
-                                               true_classes.view(-1))  # (N * 8732)
-            conf_loss_all = conf_loss_all.view(batch_size, n_priors)  # (N, 8732)
+            conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+            conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
 
             # We already know which priors are positive
             conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
 
             # Next, find which priors are hard-negative
             # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-            conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-            conf_loss_neg[
-                positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-            conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, 8732), sorted by decreasing hardness
-            hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-                self.device)  # (N, 8732)
-            hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
-            conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+            # conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
+            conf_loss_neg = conf_loss_all[negative_priors]
+            # print(positive_priors.size(), negative_priors.size(), conf_loss_pos.size(), conf_loss_neg.size())
+            # conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+            conf_loss_neg, _ = conf_loss_neg.sort(dim=0, descending=True)  # (N, 8732), sorted by decreasing hardness
+            # hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
+            #     self.device)  # (N, 8732)
+            # hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
+            # conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+            conf_loss_hard_neg = conf_loss_neg[:n_hard_negatives.sum().long()]
 
             # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
             conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
