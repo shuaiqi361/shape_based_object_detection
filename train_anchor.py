@@ -17,7 +17,7 @@ from scheduler import adjust_learning_rate
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset
 from utils import create_logger, save_checkpoint, clip_gradient
-
+from models.utils import detect_objects
 from metrics import AverageMeter, calculate_mAP
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
@@ -296,11 +296,12 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = \
-                model.detect_objects(predicted_locs,
-                                     predicted_scores,
-                                     min_score=0.01,
-                                     max_overlap=0.45,
-                                     top_k=200)
+                detect_objects(predicted_locs,
+                               predicted_scores,
+                               min_score=0.01,
+                               max_overlap=0.45,
+                               top_k=200, priors_cxcy=model.priors_cxcy,
+                               n_classes=model.n_classes, device=model.device)
 
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200

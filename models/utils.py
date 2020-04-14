@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from dataset.transforms import *
+import torch.nn.functional as F
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -81,7 +83,7 @@ class Bottleneck(nn.Module):
         return out
 
 
-def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overlap, top_k):
+def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, n_classes, device='cuda:0'):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -96,7 +98,7 @@ def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overla
     """
     # print('In detect_objects: ')
     batch_size = predicted_locs.size(0)
-    n_priors = self.priors_cxcy.size(0)
+    n_priors = priors_cxcy.size(0)
     # print(n_priors, predicted_locs.size(), predicted_scores.size())
     predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
 
@@ -111,7 +113,7 @@ def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overla
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
         decoded_locs = cxcy_to_xy(
-            gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))  # (22536, 4), these are fractional pt. coordinates
+            gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy))  # (22536, 4), these are fractional pt. coordinates
 
         # Lists to store boxes and scores for this image
         image_boxes = list()
@@ -121,7 +123,7 @@ def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overla
         # max_scores, best_label = predicted_scores[i].max(dim=1)  # (22536)
 
         # Check for each class
-        for c in range(1, self.n_classes):
+        for c in range(1, n_classes):
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
             class_scores = predicted_scores[i][:, c]  # (22536)
             score_above_min_score = (class_scores > min_score).long()  # torch.uint8 (byte) tensor, for indexing
@@ -148,7 +150,7 @@ def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overla
 
             # A Long tensor to keep track of which predicted boxes to suppress
             # 1 implies suppress, 0 implies don't suppress
-            suppress = torch.zeros(n_above_min_score, dtype=torch.long).to(self.device)  # (n_qualified)
+            suppress = torch.zeros(n_above_min_score, dtype=torch.long).to(device)  # (n_qualified)
 
             # Consider each box in order of decreasing scores
             for box in range(class_decoded_locs.size(0)):
@@ -166,14 +168,14 @@ def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overla
 
             # Store only unsuppressed boxes for this class
             image_boxes.append(class_decoded_locs[torch.nonzero(1 - suppress).squeeze(dim=1)])
-            image_labels.append(torch.LongTensor((1 - suppress).sum().item() * [c]).to(self.device))
+            image_labels.append(torch.LongTensor((1 - suppress).sum().item() * [c]).to(device))
             image_scores.append(class_scores[torch.nonzero(1 - suppress).squeeze(dim=1)])
 
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:
-            image_boxes.append(torch.FloatTensor([[0., 0., 1., 1.]]).to(self.device))
-            image_labels.append(torch.LongTensor([0]).to(self.device))
-            image_scores.append(torch.FloatTensor([0.]).to(self.device))
+            image_boxes.append(torch.FloatTensor([[0., 0., 1., 1.]]).to(device))
+            image_labels.append(torch.LongTensor([0]).to(device))
+            image_scores.append(torch.FloatTensor([0.]).to(device))
 
         # Concatenate into single tensors
         image_boxes = torch.cat(image_boxes, dim=0)  # (n_objects, 4)

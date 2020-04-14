@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from math import sqrt, log
-import torch.nn.functional as F
+
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
