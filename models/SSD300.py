@@ -451,7 +451,7 @@ class MultiBoxLoss300(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=1., neg_pos_ratio=3):
+    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3):
         super(MultiBoxLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -493,6 +493,7 @@ class MultiBoxLoss300(nn.Module):
 
         decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
         true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
+        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
         true_neg_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
 
@@ -535,6 +536,7 @@ class MultiBoxLoss300(nn.Module):
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
             true_locs[i] = boxes[i][object_for_each_prior]
+            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
             decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
@@ -546,8 +548,8 @@ class MultiBoxLoss300(nn.Module):
             loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4),
                                       true_locs[positive_priors].view(-1, 4))
         else:
-            loc_loss = self.smooth_l1(decoded_locs[positive_priors].view(-1, 4),
-                                      true_locs[positive_priors].view(-1, 4))
+            loc_loss = self.smooth_l1(predicted_locs[positive_priors].view(-1, 4),
+                                      true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         if self.config.cls_loss.upper() == 'FOCAL':

@@ -304,7 +304,7 @@ class RetinaFocalLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, alpha=1., neg_pos_ratio=3):
+    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3):
         super(RetinaFocalLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -344,10 +344,11 @@ class RetinaFocalLoss(nn.Module):
         # print(n_priors, predicted_locs.size(), predicted_scores.size())
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
-        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
-        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)
-        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
-        true_neg_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)  # (N, 22536)
+        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
+        true_neg_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
         # For each image
         for i in range(batch_size):
@@ -387,6 +388,7 @@ class RetinaFocalLoss(nn.Module):
             true_neg_classes[i] = label_for_each_prior_neg_used
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
+            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
             true_locs[i] = boxes[i][object_for_each_prior]
             decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))
 
@@ -399,8 +401,8 @@ class RetinaFocalLoss(nn.Module):
             loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4),
                                       true_locs[positive_priors].view(-1, 4))
         else:
-            loc_loss = self.smooth_l1(decoded_locs[positive_priors].view(-1, 4),
-                                      true_locs[positive_priors].view(-1, 4))
+            loc_loss = self.smooth_l1(predicted_locs[positive_priors].view(-1, 4),
+                                      true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         if self.config.cls_loss.upper() == 'FOCAL':

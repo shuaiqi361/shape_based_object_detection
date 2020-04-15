@@ -323,7 +323,7 @@ def transform(image, boxes, labels, split, resize_dim, operation_list=['expand',
             new_image, new_boxes = expand(new_image, boxes, filler=mean)
 
         # Randomly crop image (zoom in)
-        if random.random() < 0.75 and 'random_crop' in operation_list:
+        if random.random() < 0.5 and 'random_crop' in operation_list:
             new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
 
         # Convert Torch tensor to PIL image
