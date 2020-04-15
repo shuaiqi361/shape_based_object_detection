@@ -34,7 +34,8 @@ def focal_loss(y_pred, y_true, alpha=0.25, gamma=2., device='cuda:0'):
     loss = alpha_factor * (focal_weight ** gamma) * cross_entropy  # focal loss with modulating factor
 
     # normalize the loss with positive anchors
-    return loss.sum() / n_positives  # if want to use it for anything else other then SSD use loss = loss.sum()/len(y_pred)
+    return loss.sum() / len(y_pred)
+    # return loss.sum() / n_positives  # if want to use it for anything else other then SSD use loss = loss.sum()/len(y_pred)
 
 
 class FocalLoss(nn.Module):

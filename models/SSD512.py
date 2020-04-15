@@ -223,7 +223,7 @@ class PredictionConvolutions(nn.Module):
                    'conv9_2': 6,
                    'conv10_2': 6,
                    'conv11_2': 6,
-                   'conv12_2': 6}
+                   'conv12_2': 4}
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
