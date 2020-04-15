@@ -457,7 +457,7 @@ class MultiBoxLoss300(nn.Module):
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
         self.neg_pos_ratio = neg_pos_ratio
-        self.alpha = alpha
+        self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
         self.config = config

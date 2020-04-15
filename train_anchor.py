@@ -301,9 +301,9 @@ def evaluate(test_loader, model, optimizer, config):
             det_boxes_batch, det_labels_batch, det_scores_batch = \
                         detect(predicted_locs,
                                predicted_scores,
-                               min_score=0.05,
-                               max_overlap=0.5,
-                               top_k=200, priors_cxcy=model.priors_cxcy,
+                               min_score=config.nms['min_score'],
+                               max_overlap=config.nms['max_overlap'],
+                               top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                                device=model.device)
 
             time_end = time.time()
