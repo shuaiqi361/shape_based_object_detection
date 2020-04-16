@@ -235,7 +235,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         labels = [l.to(config.device) for l in labels]
 
         # Forward prop.
-        arm_locs, arm_scores, odm_locs, odm_scores, _ = model(images)
+        arm_locs, arm_scores, odm_locs, odm_scores, _, _ = model(images)
 
         # Loss
         loss = criterion(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels) / config.num_iter_flag
@@ -255,7 +255,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
         # Print status
         if i % config.print_freq == 0:
-            str_print = 'Epoch: [{0}][{1}/{2}]\t' \
+            str_print = 'Epoch: [{0:3d}][{1}/{2}]\t' \
                         'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t' \
                         'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t' \
                         'Loss {loss.val:.4f} ({loss.avg:.4f})'.format(epoch, i, len(train_loader),
@@ -300,7 +300,7 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Forward prop.
             time_start = time.time()
-            _, _, _, predicted_scores, predicted_locs = model(images)
+            _, _, _, _, predicted_locs, predicted_scores = model(images)
 
             # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = \

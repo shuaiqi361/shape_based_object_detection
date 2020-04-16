@@ -195,7 +195,7 @@ class TCBConvolutions(nn.Module):
         """
         :param n_classes: number of different types of objects
         """
-        super(ARMConvolutions, self).__init__()
+        super(TCBConvolutions, self).__init__()
 
         self.feat_channels = {'conv4_3': 512,
                               'conv7': 1024,
@@ -299,7 +299,7 @@ class TCBTail(nn.Module):
         :param internal_channels: internal conv channels fix to 256
         :param is_batchnorm: adding batch norm
         """
-        super(TCB, self).__init__()
+        super(TCBTail, self).__init__()
         self.is_batchnorm = is_batchnorm
         self.use_bias = not self.is_batchnorm
         self.out_channels = internal_channels
@@ -572,9 +572,9 @@ class RefineDet512(nn.Module):
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
-    def __init__(self, n_classes, device):
+    def __init__(self, n_classes, config):
         super(RefineDet512, self).__init__()
-        self.device = device
+        self.device = config.device
         self.n_classes = n_classes
         self.base = VGGBase()
         self.theta = 0.01
@@ -622,7 +622,7 @@ class RefineDet512(nn.Module):
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
-        print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
+        # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
         return arm_locs, arm_scores, odm_locs, odm_scores, \
                self.offset2bbox(arm_locs.detach(), odm_locs.detach()), \
                self.remove_background(arm_scores.detach(), odm_scores.detach())
@@ -642,10 +642,10 @@ class RefineDet512(nn.Module):
     def remove_background(self, arm_scores, odm_scores):
         clean_scores = odm_scores.clone()
         non_object_idx = arm_scores[:, :, 1] < self.theta
-        clean_scores[:, :, 0][non_object_idx] = 100000.
-        print('remove_background objects.')
-        print(non_object_idx.size(), clean_scores[:, :, 0].size())
-        exit()
+        clean_scores[:, :, 0][non_object_idx] = 100000.  # assign to background probability before softmax
+        # print('remove_background objects.')
+        # print(non_object_idx.size(), clean_scores[:, :, 0].size(), clean_scores[:, :, 0][non_object_idx].size())
+        # exit()
 
         return clean_scores
 
@@ -816,6 +816,7 @@ class RefineDetLoss(nn.Module):
         :param labels:
         :return:
         """
+        # print(arm_scores.size(), arm_locs.size(), odm_scores.size(), odm_locs.size())
         batch_size = odm_locs.size(0)
         n_priors = self.priors_cxcy.size(0)
         n_classes = odm_scores.size(2)
@@ -885,7 +886,7 @@ class RefineDetLoss(nn.Module):
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
-        conf_loss_all = self.cross_entropy(arm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        conf_loss_all = self.cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
         conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
 
         # We already know which priors are positive
