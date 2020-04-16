@@ -203,10 +203,10 @@ class TCBConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
-        self.tcb_conv4_3 = TCB(self.feat_channels['conv4_3'], self.feat_channels['conv7'], internal_channels)
-        self.tcb_conv7 = TCB(self.feat_channels['conv7'], self.feat_channels['conv8_2'], internal_channels)
-        self.tcb_conv8_2 = TCB(self.feat_channels['conv8_2'], self.feat_channels['conv9_2'], internal_channels)
-        self.tcb_conv9_2 = TCBTail(self.feat_channels['conv9_2'], internal_channels)
+        self.tcb_conv4_3 = TCB(self.feat_channels['conv4_3'], self.feat_channels['conv7'], internal_channels, True)
+        self.tcb_conv7 = TCB(self.feat_channels['conv7'], self.feat_channels['conv8_2'], internal_channels, True)
+        self.tcb_conv8_2 = TCB(self.feat_channels['conv8_2'], self.feat_channels['conv9_2'], internal_channels, True)
+        self.tcb_conv9_2 = TCBTail(self.feat_channels['conv9_2'], internal_channels, True)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats):
         """
@@ -623,9 +623,7 @@ class RefineDet512(nn.Module):
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
-        return arm_locs, arm_scores, odm_locs, odm_scores, \
-               self.offset2bbox(arm_locs.detach(), odm_locs.detach()), \
-               self.remove_background(arm_scores.detach(), odm_scores.detach())
+        return arm_locs, arm_scores, odm_locs, odm_scores, self.offset2bbox(arm_locs, odm_locs), odm_scores
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -642,7 +640,7 @@ class RefineDet512(nn.Module):
     def remove_background(self, arm_scores, odm_scores):
         clean_scores = odm_scores.clone()
         non_object_idx = arm_scores[:, :, 1] < self.theta
-        clean_scores[:, :, 0][non_object_idx] = 100000.  # assign to background probability before softmax
+        clean_scores[:, :, 0][non_object_idx] = 100.  # assign to background probability before softmax
         # print('remove_background objects.')
         # print(non_object_idx.size(), clean_scores[:, :, 0].size(), clean_scores[:, :, 0][non_object_idx].size())
         # exit()
@@ -759,13 +757,14 @@ class RefineDetLoss(nn.Module):
             overlap_for_each_prior[prior_for_each_object] = 1.
 
             # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]
+            label_for_each_prior = labels[i].clone()[object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
 
             # Store converted labels 0, 1
-            label_for_each_prior[label_for_each_prior > 0] = 1
+            # label_for_each_prior[label_for_each_prior > 0] = 1
+            label_for_each_prior = (label_for_each_prior > 0).long()
             true_classes[i] = label_for_each_prior
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
@@ -919,7 +918,7 @@ class RefineDetLoss(nn.Module):
         :return:
         """
         arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
         return arm_loss + odm_loss

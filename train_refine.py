@@ -336,7 +336,7 @@ def evaluate(test_loader, model, optimizer, config):
     str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
     config.logger.info(str_print)
 
-    del predicted_locs, predicted_scores, boxes, labels, images
+    del predicted_locs, predicted_scores, boxes, labels, images, difficulties
 
     return APs, mAP
 

@@ -33,6 +33,7 @@ def main():
     with open(args.config) as f:
         config = yaml.load(f)
     config = EasyDict(config)
+    config.model_type = args.model_type
 
     config.save_path = os.path.join(os.path.dirname(args.config), 'snapshots')
     if not os.path.exists(config.save_path):
@@ -135,7 +136,12 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Forward prop.
             time_start = time.time()
-            predicted_locs, predicted_scores = model(images)
+            if config.model_type == 'anchor':
+                predicted_locs, predicted_scores = model(images)
+            elif config.model_type == 'refine':
+                _, _, _, _, predicted_locs, predicted_scores = model(images)
+            else:
+                raise NotImplementedError
 
             # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = \

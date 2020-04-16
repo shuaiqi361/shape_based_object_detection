@@ -199,7 +199,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     return all_images_boxes, all_images_labels, all_images_scores
 
 
-def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, device='cuda:0'):
+def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, device='cuda:0', box_type='offset'):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -229,8 +229,13 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
 
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
-        decoded_locs = cxcy_to_xy(
-            gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy))  # (22536, 4), these are fractional pt. coordinates
+        if box_type == 'offset':
+            decoded_locs = cxcy_to_xy(
+                gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy))
+        elif box_type == 'center':
+            decoded_locs = cxcy_to_xy(predicted_locs)
+        else:
+            decoded_locs = predicted_locs[i]
 
         # Lists to store boxes and scores for this image
         image_boxes = list()
