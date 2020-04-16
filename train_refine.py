@@ -309,7 +309,7 @@ def evaluate(test_loader, model, optimizer, config):
                        min_score=config.nms['min_score'],
                        max_overlap=config.nms['max_overlap'],
                        top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                       device=model.device)
+                       device=model.device, box_type=config.model['box_type'])
 
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200
