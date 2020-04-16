@@ -577,6 +577,7 @@ class RefineDet512(nn.Module):
         self.device = device
         self.n_classes = n_classes
         self.base = VGGBase()
+        self.theta = 0.01
         # self.disable_parameter_requires_grad(self.base)
         self.aux_convs = AuxiliaryConvolutions()
         self.arm_convs = ARMConvolutions()
@@ -622,7 +623,9 @@ class RefineDet512(nn.Module):
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
         print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
-        return arm_locs, arm_scores, odm_locs, odm_scores, self.offset2bbox(arm_locs.detach(), odm_locs.detach())
+        return arm_locs, arm_scores, odm_locs, odm_scores, \
+               self.offset2bbox(arm_locs.detach(), odm_locs.detach()), \
+               self.remove_background(arm_scores.detach(), odm_scores.detach())
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -635,6 +638,16 @@ class RefineDet512(nn.Module):
             true_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], init_bbox_cxcy))
 
         return true_locs
+
+    def remove_background(self, arm_scores, odm_scores):
+        clean_scores = odm_scores.clone()
+        non_object_idx = arm_scores[:, :, 1] < self.theta
+        clean_scores[:, :, 0][non_object_idx] = 100000.
+        print('remove_background objects.')
+        print(non_object_idx.size(), clean_scores[:, :, 0].size())
+        exit()
+
+        return clean_scores
 
     def create_prior_boxes(self):
         """

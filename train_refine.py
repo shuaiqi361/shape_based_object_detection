@@ -293,7 +293,7 @@ def evaluate(test_loader, model, optimizer, config):
     with torch.no_grad():
         # Batches
         for i, (images, boxes, labels, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
-            images = images.to(config.device)  # (N, 3, 300, 300)
+            images = images.to(config.device)
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
             difficulties = [d.to(config.device) for d in difficulties]
