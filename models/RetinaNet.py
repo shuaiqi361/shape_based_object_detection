@@ -175,7 +175,7 @@ class RetinaNet(nn.Module):
             fpn_sizes = [self.layer2[layers[1] - 1].conv3.out_channels, self.layer3[layers[2] - 1].conv3.out_channels,
                          self.layer4[layers[3] - 1].conv3.out_channels]
         else:
-            raise ValueError(f"Block type {block} not understood")
+            raise ValueError("Block type {block} not understood")
 
         self.anchors_cxcy = self.create_anchors()
         self.priors_cxcy = self.anchors_cxcy

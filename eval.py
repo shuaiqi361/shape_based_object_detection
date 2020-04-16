@@ -23,7 +23,7 @@ from metrics import AverageMeter, calculate_mAP
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
 parser.add_argument('--config', default='', type=str)
 parser.add_argument('--load-path', default='', type=str)
-parser.add_argument('--model_type', default='anchor/refine/point/shape', type=str)
+parser.add_argument('--model-type', default='anchor/refine/point/shape', type=str)
 parser.add_argument('-e', '--evaluate', action='store_true')
 
 
@@ -85,23 +85,22 @@ def main():
     else:
         raise NotImplementedError
 
-    if args.evaluate:
-        assert args.load_path is not None
-        checkpoint = torch.load(args.load_path)
-        model = checkpoint['model']
-        saved_epoch = checkpoint['epoch']
-        model = model.to(config.device)
-        optimizer = checkpoint['optimizer']
-        print('Evaluate model from checkpoint %s at epoch %d.\n' % (args.load_path, saved_epoch))
+    assert args.load_path is not None
+    checkpoint = torch.load(args.load_path)
+    model = checkpoint['model']
+    saved_epoch = checkpoint['epoch']
+    model = model.to(config.device)
+    optimizer = checkpoint['optimizer']
+    print('Evaluate model from checkpoint %s at epoch %d.\n' % (args.load_path, saved_epoch))
 
-        now = datetime.now()
-        date_time = now.strftime("%m-%d-%Y_H-%M-%S")
-        config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                    'eval_result_{}_{}.txt'.format(config.model['arch'],
-                                                                                                   date_time)))
-        print('Length of Testing Dataset:', len(test_dataset))
-        print('evaluate checkpoint: ', args.load_path, ' at epoch: ', saved_epoch)
-        evaluate(test_loader, model, optimizer, config=config)
+    now = datetime.now()
+    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                                'eval_result_{}_{}.txt'.format(config.model['arch'],
+                                                                                               date_time)))
+    print('Length of Testing Dataset:', len(test_dataset))
+    print('evaluate checkpoint: ', args.load_path, ' at epoch: ', saved_epoch)
+    evaluate(test_loader, model, optimizer, config=config)
 
 
 def evaluate(test_loader, model, optimizer, config):
