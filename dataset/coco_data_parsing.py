@@ -58,7 +58,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
         image_id = annotation['image_id']
         if image_id not in all_images_dict.keys():
             all_images_dict[image_id] = {'image_path': '', 'bbox': [], 'labels': [],
-                                         'cat_names': []}
+                                         'cat_names': [], 'difficulties': []}
 
         corner_notation = [int(bbox[0]), int(bbox[1]),
                            int(bbox[0] + bbox[2]) - 1, int(bbox[1] + bbox[3]) - 1]
@@ -70,6 +70,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
         cat_id = annotation['category_id']
         cat_name = coco.loadCats([cat_id])[0]['name']
         all_images_dict[image_id]['cat_names'].append(cat_name)
+        all_images_dict[image_id]['difficulties'].append(0)
 
         if cat_name in coco_label_map.keys():
             label = coco_label_map[cat_name]
@@ -81,7 +82,8 @@ def create_data_lists_coco17(coco_root_path, output_folder):
 
     for img_id, annots in all_images_dict.items():
         train_images.append(annots['image_path'])
-        objects_coco = {'bbox': annots['bbox'], 'labels': annots['labels'], 'image_id': img_id}
+        objects_coco = {'bbox': annots['bbox'], 'labels': annots['labels'], 'image_id': img_id,
+                        'difficulties': annots['difficulties']}
         train_objects.append(objects_coco)
 
     print('\nThere are %d training images containing a total of %d objects. Files have been saved to %s.' % (
@@ -129,7 +131,8 @@ def create_data_lists_coco17(coco_root_path, output_folder):
 
         image_id = annotation['image_id']
         if image_id not in all_images_dict.keys():
-            all_images_dict[image_id] = {'image_path': '', 'bbox': [], 'labels': [], 'cat_names': []}
+            all_images_dict[image_id] = {'image_path': '', 'bbox': [], 'labels': [],
+                                         'cat_names': [], 'difficulties': []}
 
         img = coco.loadImgs(image_id)[0]
         image_path = '%s/%s/%s' % (image_folder, dataType, img['file_name'])
@@ -142,6 +145,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
         cat_id = annotation['category_id']
         cat_name = coco.loadCats([cat_id])[0]['name']
         all_images_dict[image_id]['cat_names'].append(cat_name)
+        all_images_dict[image_id]['difficulties'].append(0)
 
         if cat_name in coco_label_map.keys():
             label = coco_label_map[cat_name]
@@ -153,7 +157,8 @@ def create_data_lists_coco17(coco_root_path, output_folder):
 
     for img_id, annots in all_images_dict.items():
         test_images.append(annots['image_path'])
-        objects_coco = {'bbox': annots['bbox'], 'labels': annots['labels'], 'image_id': img_id}
+        objects_coco = {'bbox': annots['bbox'], 'labels': annots['labels'], 'image_id': img_id,
+                        'difficulties': annots['difficulties']}
         test_objects.append(objects_coco)
 
     # print('Total validation images: ', len(test_images))

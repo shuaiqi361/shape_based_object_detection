@@ -43,13 +43,13 @@ def parse_annotation(annotation_path):
         xmin = int(bbox.find('xmin').text) - 1
         ymin = int(bbox.find('ymin').text) - 1
         xmax = int(bbox.find('xmax').text) - 1
-        ymax = int(bbox.find('ymax').text) - 1
+        ymax = int(bbox.find('ymax').text) - 1  # special 1-based VOC convention
 
         boxes.append([xmin, ymin, xmax, ymax])
         labels.append(VOC_label_map[label])
         difficulties.append(difficult)
 
-    return {'boxes': boxes, 'labels': labels, 'difficulties': difficulties}
+    return {'bbox': boxes, 'labels': labels, 'difficulties': difficulties}
 
 
 def create_data_lists(voc07_path, voc12_path, output_folder):

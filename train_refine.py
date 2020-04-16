@@ -61,10 +61,13 @@ def main():
     decay_lr_to = config.optimizer['decay_lr']
     momentum = config.optimizer['momentum']
     weight_decay = config.optimizer['weight_decay']
-    if config.device == 1:
-        config.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    else:
+    if torch.cuda.device_count() < 2:
         config.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    else:
+        if config.device == 1:  # only for 2 GPUs max
+            config.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        else:
+            config.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
@@ -223,7 +226,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
     # Batches
 
-    for i, (images, boxes, labels, _) in enumerate(train_loader):
+    for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         data_time.update(time.time() - start)
 
         # Move to default device
@@ -284,14 +287,16 @@ def evaluate(test_loader, model, optimizer, config):
     det_scores = list()
     true_boxes = list()
     true_labels = list()
+    true_difficulties = list()
     detect_speed = list()
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, _) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)  # (N, 3, 300, 300)
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
+            difficulties = [d.to(config.device) for d in difficulties]
 
             # Forward prop.
             time_start = time.time()
@@ -315,10 +320,11 @@ def evaluate(test_loader, model, optimizer, config):
             det_scores.extend(det_scores_batch)
             true_boxes.extend(boxes)
             true_labels.extend(labels)
+            true_difficulties.extend(difficulties)
             detect_speed.append((time_end - time_start) / len(labels))
 
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels,
+        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
                                  config.label_map, config.device)
 
     # Print AP for each class

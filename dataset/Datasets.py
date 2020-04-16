@@ -40,8 +40,9 @@ class PascalVOCDataset(Dataset):
 
         # Read objects in this image (bounding boxes, labels, difficulties)
         objects = self.objects[i]
-        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
+        boxes = torch.FloatTensor(objects['bbox'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
+        difficulties = torch.LongTensor(objects['difficulties'])  # (n_objects)
         ids = self.images[i]
 
         # Apply transformations
@@ -49,7 +50,7 @@ class PascalVOCDataset(Dataset):
                                           split=self.split, resize_dim=self.input_size,
                                           operation_list=self.config.model['operation_list'])
 
-        return image, boxes, labels, ids
+        return image, boxes, labels, ids, difficulties
 
     def __len__(self):
         return len(self.images)
@@ -71,16 +72,18 @@ class PascalVOCDataset(Dataset):
         boxes = list()
         labels = list()
         ids = list()
+        difficulties = list()
 
         for b in batch:
             images.append(b[0])
             boxes.append(b[1])
             labels.append(b[2])
             ids.append(b[3])
+            difficulties.append(b[4])
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels, ids
+        return images, boxes, labels, ids, difficulties
 
 
 class COCO17Dataset(Dataset):
@@ -119,12 +122,13 @@ class COCO17Dataset(Dataset):
         boxes = torch.FloatTensor(objects['bbox'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
         ids = objects['image_id']
+        difficulties = torch.LongTensor(objects['difficulties'])  # (n_objects)
 
         # Apply transformations
         image, boxes, labels = transform(image, boxes, labels,
                                          split=self.split, resize_dim=self.input_size,
                                          operation_list=self.config.model['operation_list'])
-        return image, boxes, labels, ids
+        return image, boxes, labels, ids, difficulties
 
     def __len__(self):
         return len(self.images)
@@ -146,16 +150,18 @@ class COCO17Dataset(Dataset):
         boxes = list()
         labels = list()
         ids = list()
+        difficulties = list()
 
         for b in batch:
             images.append(b[0])
             boxes.append(b[1])
             labels.append(b[2])
             ids.append(b[3])
+            difficulties.append(b[4])
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels, ids
+        return images, boxes, labels, ids, difficulties
 
 
 class TrafficDataset(Dataset):
