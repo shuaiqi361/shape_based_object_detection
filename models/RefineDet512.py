@@ -832,7 +832,7 @@ class RefineDetLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy))
+            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy)).clamp_(0, 1)
             overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -918,7 +918,7 @@ class RefineDetLoss(nn.Module):
         :return:
         """
         arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
         return arm_loss + odm_loss

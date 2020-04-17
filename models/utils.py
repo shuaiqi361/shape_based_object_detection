@@ -231,11 +231,11 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
         # Decode object coordinates from the form we regressed predicted boxes to
         if box_type == 'offset':
             decoded_locs = cxcy_to_xy(
-                gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy))
+                gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
         elif box_type == 'center':
-            decoded_locs = cxcy_to_xy(predicted_locs)
+            decoded_locs = cxcy_to_xy(predicted_locs).clamp_(0, 1)
         else:
-            decoded_locs = predicted_locs[i]
+            decoded_locs = predicted_locs[i].clamp_(0, 1)
 
         # Lists to store boxes and scores for this image
         image_boxes = list()
