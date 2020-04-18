@@ -217,7 +217,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     n_priors = priors_cxcy.size(0)
     n_classes = predicted_scores.size(2)
     # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
-    predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
+    # predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
+    predicted_scores = F.sigmoid(predicted_scores)
 
     # Lists to store final predicted boxes, labels, and scores for all images
     all_images_boxes = list()

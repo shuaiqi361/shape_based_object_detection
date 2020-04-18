@@ -140,7 +140,7 @@ class ClassificationModel(nn.Module):
         out = self.act4(out)
 
         out = self.output(out)
-        out = self.output_act(out)
+        # out = self.output_act(out)
 
         # out is B x C x W x H, with C = n_classes x n_anchors
         out1 = out.permute(0, 2, 3, 1)
@@ -408,7 +408,7 @@ class RetinaFocalLoss(nn.Module):
             target_class = torch.cat([true_classes[positive_priors],
                                       true_classes[negative_priors]], dim=0)
             conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                        target_class.view(-1), device=self.device)
+                                        target_class.view(-1)) / torch.nonzero(positive_priors > 0).numel()
         else:
             # Number of positive and hard-negative priors per image
             # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())

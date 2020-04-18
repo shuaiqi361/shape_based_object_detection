@@ -65,7 +65,7 @@ class SigmoidFocalLoss(nn.Module):
                 - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
         )
 
-        return loss.sum() / out.size(0)
+        return loss.sum()
 
 
 class FocalLoss(nn.Module):
