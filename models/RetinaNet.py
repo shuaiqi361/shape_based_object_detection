@@ -5,7 +5,7 @@ from math import sqrt, log
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, focal_loss
+from operators.Loss import IouLoss, focal_loss, SigmoidFocalLoss
 from metrics import find_jaccard_overlap
 from .utils import BasicBlock, Bottleneck
 
@@ -124,7 +124,7 @@ class ClassificationModel(nn.Module):
         self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
-        # self.output_act = nn.Sigmoid()
+        self.output_act = nn.Sigmoid()
 
     def forward(self, x):
         out = self.conv1(x)
@@ -140,7 +140,7 @@ class ClassificationModel(nn.Module):
         out = self.act4(out)
 
         out = self.output(out)
-        # out = self.output_act(out)
+        out = self.output_act(out)
 
         # out is B x C x W x H, with C = n_classes x n_anchors
         out1 = out.permute(0, 2, 3, 1)
@@ -198,7 +198,7 @@ class RetinaNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-        # self.freeze_bn()
+        self.freeze_bn()
 
     def create_anchors(self):
         """
@@ -315,7 +315,8 @@ class RetinaFocalLoss(nn.Module):
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
-        self.Focal_loss = focal_loss
+        # self.Focal_loss = focal_loss
+        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
