@@ -203,10 +203,10 @@ class TCBConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
-        self.tcb_conv4_3 = TCB(self.feat_channels['conv4_3'], self.feat_channels['conv7'], internal_channels, True)
-        self.tcb_conv7 = TCB(self.feat_channels['conv7'], self.feat_channels['conv8_2'], internal_channels, True)
-        self.tcb_conv8_2 = TCB(self.feat_channels['conv8_2'], self.feat_channels['conv9_2'], internal_channels, True)
-        self.tcb_conv9_2 = TCBTail(self.feat_channels['conv9_2'], internal_channels, True)
+        self.tcb_conv4_3 = TCB(self.feat_channels['conv4_3'], self.feat_channels['conv7'], internal_channels)
+        self.tcb_conv7 = TCB(self.feat_channels['conv7'], self.feat_channels['conv8_2'], internal_channels)
+        self.tcb_conv8_2 = TCB(self.feat_channels['conv8_2'], self.feat_channels['conv9_2'], internal_channels)
+        self.tcb_conv9_2 = TCBTail(self.feat_channels['conv9_2'], internal_channels)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats):
         """
@@ -587,7 +587,10 @@ class RefineDet512(nn.Module):
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
         self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        nn.init.constant_(self.rescale_factors_conv4_3, 10.)
+
+        self.rescale_factors_conv7 = nn.Parameter(torch.FloatTensor(1, 1024, 1, 1))
+        nn.init.constant_(self.rescale_factors_conv7, 8.)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -607,9 +610,14 @@ class RefineDet512(nn.Module):
         conv4_3_feats, conv7_feats = self.base(image)  # (N, 512, 64, 64), (N, 1024, 32, 32)
 
         # # Rescale conv4_3 after L2 norm
-        norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
-        conv4_3_feats = conv4_3_feats / norm  # (N, 512, 64, 64)
+        norm4 = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
+        conv4_3_feats = conv4_3_feats / norm4  # (N, 512, 64, 64)
         conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
+
+        # # Rescale conv7 after L2 norm
+        norm7 = conv7_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
+        conv7_feats = conv7_feats / norm7  # (N, 1024, 64, 64)
+        conv7_feats = conv7_feats * self.rescale_factors_conv7  # (N, 1024, 64, 64)
 
         # Run auxiliary convolutions (higher level feature map generators)
         conv8_2_feats, conv9_2_feats = \
@@ -623,7 +631,11 @@ class RefineDet512(nn.Module):
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
-        return arm_locs, arm_scores, odm_locs, odm_scores, self.offset2bbox(arm_locs, odm_locs), odm_scores
+        raw_locs = self.offset2bbox(arm_locs, odm_locs)
+        # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
+        prior_negative_idx = (arm_scores[:, :, 1] < self.theta).long()  # (batchsize, n_priors)
+
+        return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_negative_idx
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -637,15 +649,18 @@ class RefineDet512(nn.Module):
 
         return true_locs
 
-    def remove_background(self, arm_scores, odm_scores):
-        clean_scores = odm_scores.clone()
-        non_object_idx = arm_scores[:, :, 1] < self.theta
-        clean_scores[:, :, 0][non_object_idx] = 100.  # assign to background probability before softmax
+    def remove_background(self, arm_scores, odm_scores, true_locs):
+        # print(arm_scores.size(), odm_scores.size(), true_locs.size())
+        # non_object_idx = arm_scores[:, :, 1] < self.theta
+        prior_positive_idx = (arm_scores[:, :, 1] > self.theta).long()
+        # clean_scores = odm_scores[non_object_idx, :]
+        # clean_locs = true_locs[non_object_idx, :]
         # print('remove_background objects.')
-        # print(non_object_idx.size(), clean_scores[:, :, 0].size(), clean_scores[:, :, 0][non_object_idx].size())
+        # print(non_object_idx.size(), clean_scores.size(), clean_locs.size())
+        # print(clean_locs.size(), clean_scores.size())
         # exit()
 
-        return clean_scores
+        return prior_positive_idx
 
     def create_prior_boxes(self):
         """
@@ -879,10 +894,10 @@ class RefineDetLoss(nn.Module):
         positive_priors[easy_negative_idx] = 0
 
         # LOCALIZATION LOSS
-        loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
-                                  true_locs[positive_priors].view(-1, 4))
-        # loc_loss = self.smooth_l1(odm_locs[positive_priors].view(-1, 4),
-        #                           true_locs_encoded[positive_priors].view(-1, 4))
+        # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
+        #                           true_locs[positive_priors].view(-1, 4))
+        loc_loss = self.smooth_l1(odm_locs[positive_priors].view(-1, 4),
+                                  true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
@@ -901,6 +916,8 @@ class RefineDetLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+        conf_loss_neg[easy_negative_idx] = 0.
+
         conf_loss_neg, _ = conf_loss_neg.sort(dim=0,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
         hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
@@ -911,7 +928,7 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss * 5.
+        return conf_loss + self.alpha * loc_loss
 
     def forward(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
@@ -927,4 +944,4 @@ class RefineDetLoss(nn.Module):
         odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + 2. * odm_loss
+        return arm_loss + odm_loss

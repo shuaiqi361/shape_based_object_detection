@@ -176,7 +176,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     return all_images_boxes, all_images_labels, all_images_scores
 
 
-def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config):
+def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config, prior_negatives_idx=None):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -209,7 +209,7 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     all_images_scores = list()
 
     # print(n_priors, predicted_locs.size(),predicted_scores.size())
-    assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
+    # assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
@@ -227,11 +227,17 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
         image_scores = list()
 
         # max_scores, best_label = predicted_scores[i].max(dim=1)  # (22536)
-
+        if prior_negatives_idx is not None:
+            class_scores_all = predicted_scores[i]
+            class_scores_all[prior_negatives_idx[i], :] = 0.  # not used for detect objects
+            # print(class_scores_all.size(), predicted_scores[i].size(), prior_negatives_idx.size())
+        else:
+            class_scores_all = predicted_scores[i]
+        # exit()
         # Check for each class
         for c in range(1, n_classes):
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
-            class_scores = predicted_scores[i][:, c]  # (22536)
+            class_scores = class_scores_all[:, c]  # (22536)
             score_above_min_score = (class_scores > min_score).long()  # for indexing
             # print(score_above_min_score.size(), score_above_min_score[:10])
             n_above_min_score = torch.sum(score_above_min_score).item()

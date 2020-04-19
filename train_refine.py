@@ -235,7 +235,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         labels = [l.to(config.device) for l in labels]
 
         # Forward prop.
-        arm_locs, arm_scores, odm_locs, odm_scores, _, _ = model(images)
+        arm_locs, arm_scores, odm_locs, odm_scores, _, _, _ = model(images)
 
         # Loss
         loss = criterion(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels) / config.num_iter_flag
@@ -300,17 +300,9 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Forward prop.
             time_start = time.time()
-            _, _, _, _, predicted_locs, predicted_scores = model(images)
+            _, _, _, _, predicted_locs, predicted_scores, prior_negatives_idx = model(images)
 
             if config.data_name.upper() == 'COCO':
-                det_boxes_batch, det_labels_batch, det_scores_batch = \
-                    detect_objects(predicted_locs,
-                                   predicted_scores,
-                                   min_score=config.nms['min_score'],
-                                   max_overlap=config.nms['max_overlap'],
-                                   top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                                   config=config)
-            elif config.data_name.upper() == 'VOC':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
                     detect(predicted_locs,
                            predicted_scores,
@@ -318,6 +310,14 @@ def evaluate(test_loader, model, optimizer, config):
                            max_overlap=config.nms['max_overlap'],
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                            config=config)
+            elif config.data_name.upper() == 'VOC':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config, prior_negatives_idx=prior_negatives_idx)
             else:
                 raise NotImplementedError
 
