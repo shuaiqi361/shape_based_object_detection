@@ -8,6 +8,8 @@ import numpy as np
 import torch.utils.data as data
 import time
 import yaml
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 from tensorboardX import SummaryWriter
 import argparse
 from easydict import EasyDict
@@ -17,7 +19,7 @@ from scheduler import adjust_learning_rate
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset
 from utils import create_logger, save_checkpoint, clip_gradient
-from models.utils import detect
+from models.utils import detect, detect_objects
 from metrics import AverageMeter, calculate_mAP
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
@@ -50,17 +52,19 @@ def main():
     with open(config.label_path, 'r') as j:
         config.label_map = json.load(j)
 
+    config.rev_coco_label_map = {v: k for k, v in config.label_map.items()}
+
     config.n_classes = len(config.label_map)  # number of different types of objects
 
     iterations = config.optimizer['max_iter'] * config.num_iter_flag
     workers = config.workers
-    val_freq = config.val_freq
-    lr = config.optimizer['base_lr']
-    decay_lr_at = [it * config.num_iter_flag for it in config.optimizer['decay_iter']]
-
-    decay_lr_to = config.optimizer['decay_lr']
-    momentum = config.optimizer['momentum']
-    weight_decay = config.optimizer['weight_decay']
+    # val_freq = config.val_freq
+    # lr = config.optimizer['base_lr']
+    # decay_lr_at = [it * config.num_iter_flag for it in config.optimizer['decay_iter']]
+    #
+    # decay_lr_to = config.optimizer['decay_lr']
+    # momentum = config.optimizer['momentum']
+    # weight_decay = config.optimizer['weight_decay']
     if torch.cuda.device_count() < 2:
         config.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     else:
@@ -74,6 +78,7 @@ def main():
 
     # Custom dataloaders
     if config.data_name.upper() == 'COCO':
+        config.coco = COCO(config.annotation_root)
         test_dataset = COCO17Dataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -125,10 +130,12 @@ def evaluate(test_loader, model, optimizer, config):
     true_labels = list()
     true_difficulties = list()
     detect_speed = list()
+    COCO_format_results = list()
+    image_all_ids = list()
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, ids, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(config.device)
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
@@ -144,13 +151,24 @@ def evaluate(test_loader, model, optimizer, config):
                 raise NotImplementedError
 
             # Detect objects in SSD output
-            det_boxes_batch, det_labels_batch, det_scores_batch = \
-                        detect(predicted_locs,
-                               predicted_scores,
-                               min_score=config.nms['min_score'],
-                               max_overlap=config.nms['max_overlap'],
-                               top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                               device=model.device)
+            if config.data_name.upper() == 'COCO':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect_objects(predicted_locs,
+                                   predicted_scores,
+                                   min_score=config.nms['min_score'],
+                                   max_overlap=config.nms['max_overlap'],
+                                   top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                                   config=config)
+            elif config.data_name.upper() == 'VOC':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config)
+            else:
+                raise NotImplementedError
 
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200
@@ -164,21 +182,60 @@ def evaluate(test_loader, model, optimizer, config):
             true_difficulties.extend(difficulties)
             detect_speed.append((time_end - time_start) / len(labels))
 
+            if config.data_name.upper() == 'COCO':
+                # store results in COCO formats
+                det_boxes_batch, det_labels_batch, det_scores_batch = det_boxes_batch.cpu(), \
+                                                                      det_labels_batch.cpu(), det_scores_batch.cpu()
+                for j in range(len(ids)):
+                    img = config.coco.loadImgs(ids[j])[0]
+                    width = img['width'] * 1.
+                    height = img['height'] * 1.
+                    bboxes = det_boxes_batch[j, :, :]
+                    bboxes[:, 2] -= bboxes[:, 0]
+                    bboxes[:, 3] -= bboxes[:, 1]
+                    bboxes[:, 0] *= width
+                    bboxes[:, 2] *= width
+                    bboxes[:, 1] *= height
+                    bboxes[:, 3] *= height
+                    for box_idx in range(det_boxes_batch.size(1)):
+                        score = float(det_scores_batch[j, box_idx])
+                        label_name = config.rev_coco_label_map[int(det_labels_batch[j, box_idx])]
+                        label = config.coco.getCatIds(catNms=[label_name])[0]
+                        bbox = bboxes[box_idx, :].tolist()
+                        image_result = {
+                            'image_id': ids[j],
+                            'category_id': label,
+                            'score': score,
+                            'bbox': bbox
+                        }
+                        COCO_format_results.append(image_result)
+                        image_all_ids.append(ids[j])
+
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
+        if config.data_name.upper() == 'VOC':
+            APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
                                  config.label_map, config.device)
 
-    # Print AP for each class
-    pp.pprint(APs)
-    details = pprint.pformat(APs)
-    config.logger.info(details)
+            # Print AP for each class
+            pp.pprint(APs)
+            details = pprint.pformat(APs)
+            config.logger.info(details)
 
-    str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
-    config.logger.info(str_print)
+            str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
+                        'avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
+            config.logger.info(str_print)
 
-    del predicted_locs, predicted_scores, boxes, labels
+        if config.data_name.upper() == 'COCO':
+            json.dump(image_result, open('{}/{}_bbox_results.json'.format(config.save_path,
+                                                                          config.data_name), 'w'), indent=4)
+            # run COCO evaluation
+            coco_eval = COCOeval(config.coco, image_result, 'bbox')
+            coco_eval.params.imgIds = image_all_ids
+            coco_eval.evaluate()
+            coco_eval.accumulate()
+            coco_eval.summarize()
 
-    return APs, mAP
+    return
 
 
 if __name__ == '__main__':

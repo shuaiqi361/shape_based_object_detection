@@ -17,7 +17,7 @@ from scheduler import adjust_learning_rate
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset
 from utils import create_logger, save_checkpoint, clip_gradient
-from models.utils import detect
+from models.utils import detect, detect_objects
 from metrics import AverageMeter, calculate_mAP
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
@@ -303,13 +303,24 @@ def evaluate(test_loader, model, optimizer, config):
             predicted_locs, predicted_scores = model(images)
 
             # Detect objects in SSD output
-            det_boxes_batch, det_labels_batch, det_scores_batch = \
-                        detect(predicted_locs,
-                               predicted_scores,
-                               min_score=config.nms['min_score'],
-                               max_overlap=config.nms['max_overlap'],
-                               top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                               device=model.device, box_type=config.model['box_type'])
+            if config.data_name.upper() == 'COCO':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect_objects(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config)
+            elif config.data_name.upper() == 'VOC':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config)
+            else:
+                raise NotImplementedError
 
             time_end = time.time()
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200

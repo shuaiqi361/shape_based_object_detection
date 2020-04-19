@@ -84,7 +84,7 @@ class Bottleneck(nn.Module):
         return out
 
 
-def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, n_classes, device='cuda:0'):
+def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -97,11 +97,17 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     :param top_k: if there are a lot of resulting detection across all classes, keep only the top 'k'
     :return: detections (boxes, labels, and scores), lists of length batch_size
     """
-    # print('In detect_objects: ')
+    box_type = config.model['box_type']
+    device = config.device
+    focal_type = config['focal_type']
     batch_size = predicted_locs.size(0)
     n_priors = priors_cxcy.size(0)
-    # print(n_priors, predicted_locs.size(), predicted_scores.size())
-    predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
+    n_classes = predicted_scores.size(2)
+    # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
+    if focal_type.lower() == 'sigmoid':
+        predicted_scores = predicted_scores.sigmoid()
+    else:
+        predicted_scores = predicted_scores.softmax(dim=2)  # softmax activation
 
     # Lists to store final predicted boxes, labels, and scores for all images
     all_images_boxes = list()
@@ -113,64 +119,35 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
 
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
-        decoded_locs = cxcy_to_xy(
-            gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy))  # (22536, 4), these are fractional pt. coordinates
+        if box_type == 'offset':
+            decoded_locs = cxcy_to_xy(
+                gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
+        elif box_type == 'center':
+            decoded_locs = cxcy_to_xy(predicted_locs).clamp_(0, 1)
+        else:
+            decoded_locs = predicted_locs[i].clamp_(0, 1)
 
         # Lists to store boxes and scores for this image
         image_boxes = list()
         image_labels = list()
         image_scores = list()
 
-        # max_scores, best_label = predicted_scores[i].max(dim=1)  # (22536)
+        max_scores = torch.max(predicted_scores[i], dim=1, keepdim=True)[0]
+        score_above_min_score = (max_scores > min_score)[:, 0].long()
+        n_above_min_score = torch.sum(score_above_min_score).item()  # find valid class labels
 
-        # Check for each class
-        for c in range(1, n_classes):
-            # Keep only predicted boxes and scores where scores for this class are above the minimum score
-            class_scores = predicted_scores[i][:, c]  # (22536)
-            score_above_min_score = (class_scores > min_score).long()  # torch.uint8 (byte) tensor, for indexing
-            # print(score_above_min_score.size(), score_above_min_score[:10])
-            n_above_min_score = torch.sum(score_above_min_score).item()
+        if n_above_min_score > 0:
+            valid_scores = predicted_scores[i, score_above_min_score, :]
+            valid_anchors = decoded_locs[score_above_min_score, :]
+            valid_max_scores = max_scores[score_above_min_score, :]
 
-            if n_above_min_score == 0:
-                continue
+            anchor_nms_idx = nms(valid_anchors, valid_max_scores, max_overlap)
 
-            class_scores = class_scores[torch.nonzero(score_above_min_score)].squeeze(
-                dim=1)  # (n_qualified), n_min_score <= 22536
+            nms_scores, nms_classes = valid_scores[anchor_nms_idx, :].max(dim=1)
 
-            class_decoded_locs = decoded_locs[torch.nonzero(score_above_min_score)].squeeze(
-                dim=1)  # (n_qualified, 4)
-
-            # Sort predicted boxes and scores by scores
-            class_scores, sort_ind = class_scores.sort(dim=0, descending=True)  # (n_qualified), (n_min_score)
-            class_decoded_locs = class_decoded_locs[sort_ind]  # (n_min_score, 4)
-
-            # Find the overlap between predicted boxes
-            overlap = find_jaccard_overlap(class_decoded_locs, class_decoded_locs)  # (n_qualified, n_min_score)
-
-            # Non-Maximum Suppression (NMS)
-
-            # A Long tensor to keep track of which predicted boxes to suppress
-            # 1 implies suppress, 0 implies don't suppress
-            suppress = torch.zeros(n_above_min_score, dtype=torch.long).to(device)  # (n_qualified)
-
-            # Consider each box in order of decreasing scores
-            for box in range(class_decoded_locs.size(0)):
-                # If this box is already marked for suppression
-                if suppress[box] == 1:
-                    continue
-
-                # Suppress boxes whose overlaps (with this box) are greater than maximum overlap
-                # Find such boxes and update suppress indices
-                suppress = torch.max(suppress, (overlap[box] > max_overlap).long())
-                # The max operation retains previously suppressed boxes, like an 'OR' operation
-
-                # Don't suppress this box, even though it has an overlap of 1 with itself
-                suppress[box] = 0
-
-            # Store only unsuppressed boxes for this class
-            image_boxes.append(class_decoded_locs[torch.nonzero(1 - suppress).squeeze(dim=1)])
-            image_labels.append(torch.LongTensor((1 - suppress).sum().item() * [c]).to(device))
-            image_scores.append(class_scores[torch.nonzero(1 - suppress).squeeze(dim=1)])
+            image_boxes.append(valid_anchors[anchor_nms_idx, :])
+            image_labels.append(torch.LongTensor(nms_classes).to(device))
+            image_scores.append(nms_scores)
 
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:
@@ -199,7 +176,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     return all_images_boxes, all_images_labels, all_images_scores
 
 
-def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, device='cuda:0', box_type='offset'):
+def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -213,11 +190,18 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     :return: detections (boxes, labels, and scores), lists of length batch_size
     """
     # print('In detect_objects: ')
+    box_type = config.model['box_type']
+    device = config.device
+    focal_type = config['focal_type']
     batch_size = predicted_locs.size(0)
     n_priors = priors_cxcy.size(0)
     n_classes = predicted_scores.size(2)
     # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
-    predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
+    if focal_type.lower() == 'sigmoid':
+        predicted_scores = predicted_scores.sigmoid()
+    else:
+        predicted_scores = predicted_scores.softmax(dim=2)  # softmax activation
+    # predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 22536, n_classes)
 
     # Lists to store final predicted boxes, labels, and scores for all images
     all_images_boxes = list()
