@@ -128,14 +128,14 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
 
 
 if __name__ == '__main__':
-    # voc07_path = '/home/keyi/research/data/VOC_2007/VOCdevkit/VOC2007'
-    # voc12_path = '/home/keyi/research/data/VOC_2012/VOCdevkit/VOC2012'
-    # output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/VOC'
+    voc07_path = '/home/keyi/research/data/VOC_2007/VOCdevkit/VOC2007'
+    voc12_path = '/home/keyi/research/data/VOC_2012/VOCdevkit/VOC2012'
+    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/VOC'
     #
     # create_data_lists(voc07_path, voc12_path, output_folder)
 
-    voc07_path = '/home/keyi/Documents/Data/VOC_2007/VOC_2007_merge/VOC2007'
-    voc12_path = '/home/keyi/Documents/Data/VOC_2012/VOCdevkit/VOC2012'
-    output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/VOC'
+    # voc07_path = '/home/keyi/Documents/Data/VOC_2007/VOC_2007_merge/VOC2007'
+    # voc12_path = '/home/keyi/Documents/Data/VOC_2012/VOCdevkit/VOC2012'
+    # output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/VOC'
 
     create_data_lists(voc07_path, voc12_path, output_folder)
