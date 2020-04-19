@@ -52,7 +52,7 @@ def main():
     with open(config.label_path, 'r') as j:
         config.label_map = json.load(j)
 
-    config.rev_coco_label_map = {v: k for k, v in config.label_map.items()}
+    config.rev_coco_label_map = {str(v): k for k, v in config.label_map.items()}
 
     config.n_classes = len(config.label_map)  # number of different types of objects
 
@@ -78,7 +78,7 @@ def main():
 
     # Custom dataloaders
     if config.data_name.upper() == 'COCO':
-        config.coco = COCO(config.annotation_root)
+        config.coco = COCO(config.annotation_file)
         test_dataset = COCO17Dataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -184,22 +184,23 @@ def evaluate(test_loader, model, optimizer, config):
 
             if config.data_name.upper() == 'COCO':
                 # store results in COCO formats
-                det_boxes_batch, det_labels_batch, det_scores_batch = det_boxes_batch.cpu(), \
-                                                                      det_labels_batch.cpu(), det_scores_batch.cpu()
+                det_boxes_batch = [b.cpu() for b in det_boxes_batch]
+                det_labels_batch = [b.cpu() for b in det_labels_batch]
+                det_scores_batch = [b.cpu() for b in det_scores_batch]
                 for j in range(len(ids)):
                     img = config.coco.loadImgs(ids[j])[0]
                     width = img['width'] * 1.
                     height = img['height'] * 1.
-                    bboxes = det_boxes_batch[j, :, :]
+                    bboxes = det_boxes_batch[j]
                     bboxes[:, 2] -= bboxes[:, 0]
                     bboxes[:, 3] -= bboxes[:, 1]
                     bboxes[:, 0] *= width
                     bboxes[:, 2] *= width
                     bboxes[:, 1] *= height
                     bboxes[:, 3] *= height
-                    for box_idx in range(det_boxes_batch.size(1)):
-                        score = float(det_scores_batch[j, box_idx])
-                        label_name = config.rev_coco_label_map[int(det_labels_batch[j, box_idx])]
+                    for box_idx in range(det_boxes_batch[j].size(0)):
+                        score = float(det_scores_batch[j][box_idx])
+                        label_name = config.rev_coco_label_map[str(int(det_labels_batch[j][box_idx]))]
                         label = config.coco.getCatIds(catNms=[label_name])[0]
                         bbox = bboxes[box_idx, :].tolist()
                         image_result = {
@@ -226,10 +227,12 @@ def evaluate(test_loader, model, optimizer, config):
             config.logger.info(str_print)
 
         if config.data_name.upper() == 'COCO':
-            json.dump(image_result, open('{}/{}_bbox_results.json'.format(config.save_path,
+            json.dump(COCO_format_results, open('{}/{}_bbox_results.json'.format(config.save_path,
                                                                           config.data_name), 'w'), indent=4)
             # run COCO evaluation
-            coco_eval = COCOeval(config.coco, image_result, 'bbox')
+            coco_pred = config.coco.loadRes('{}/{}_bbox_results.json'.format(config.save_path,
+                                                                          config.data_name))
+            coco_eval = COCOeval(config.coco, coco_pred, 'bbox')
             coco_eval.params.imgIds = image_all_ids
             coco_eval.evaluate()
             coco_eval.accumulate()

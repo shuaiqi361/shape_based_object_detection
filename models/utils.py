@@ -132,7 +132,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
         image_labels = list()
         image_scores = list()
 
-        max_scores = torch.max(predicted_scores[i], dim=1, keepdim=True)[0]
+        max_scores = torch.max(predicted_scores[i, :, 1:], dim=1, keepdim=True)[0]
         score_above_min_score = (max_scores > min_score)[:, 0].long()
         n_above_min_score = torch.sum(score_above_min_score).item()  # find valid class labels
 
@@ -141,12 +141,12 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
             valid_anchors = decoded_locs[score_above_min_score, :]
             valid_max_scores = max_scores[score_above_min_score, :]
 
-            anchor_nms_idx = nms(valid_anchors, valid_max_scores, max_overlap)
+            anchor_nms_idx = nms(valid_anchors, valid_max_scores.squeeze(-1), max_overlap)
 
-            nms_scores, nms_classes = valid_scores[anchor_nms_idx, :].max(dim=1)
+            nms_scores, nms_classes = valid_scores[anchor_nms_idx, 1:].max(dim=1)
 
             image_boxes.append(valid_anchors[anchor_nms_idx, :])
-            image_labels.append(torch.LongTensor(nms_classes).to(device))
+            image_labels.append((nms_classes + 1).to(device))
             image_scores.append(nms_scores)
 
         # If no object in any class is found, store a placeholder for 'background'

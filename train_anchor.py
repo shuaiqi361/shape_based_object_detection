@@ -305,7 +305,7 @@ def evaluate(test_loader, model, optimizer, config):
             # Detect objects in SSD output
             if config.data_name.upper() == 'COCO':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
-                    detect_objects(predicted_locs,
+                    detect(predicted_locs,
                            predicted_scores,
                            min_score=config.nms['min_score'],
                            max_overlap=config.nms['max_overlap'],
