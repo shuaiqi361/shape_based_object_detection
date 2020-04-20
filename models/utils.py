@@ -217,7 +217,7 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
             decoded_locs = cxcy_to_xy(
                 gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
         elif box_type == 'center':
-            decoded_locs = cxcy_to_xy(predicted_locs).clamp_(0, 1)
+            decoded_locs = cxcy_to_xy(predicted_locs[i]).clamp_(0, 1)
         else:
             decoded_locs = predicted_locs[i].clamp_(0, 1)
 
@@ -228,37 +228,47 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
 
         # max_scores, best_label = predicted_scores[i].max(dim=1)  # (22536)
         if prior_negatives_idx is not None:
-            class_scores_all = predicted_scores[i]
-            class_scores_all[prior_negatives_idx[i], :] = 0.  # not used for detect objects
-            # print(class_scores_all.size(), predicted_scores[i].size(), prior_negatives_idx.size())
+            # print(prior_negatives_idx.size(), predicted_scores.size(), decoded_locs.size())
+            class_scores_all = torch.index_select(predicted_scores[i], dim=0,
+                                                  index=prior_negatives_idx[i].nonzero().squeeze(-1))
+            decoded_locs_all = torch.index_select(decoded_locs, dim=0,
+                                                  index=prior_negatives_idx[i].nonzero().squeeze(-1))
+            # class_scores_all[prior_negatives_idx[i], :] = 0.  # not used for detect objects
+            # print(class_scores_all.size(), decoded_locs_all.size(), prior_negatives_idx.size())
+
         else:
-            class_scores_all = predicted_scores[i]
+            class_scores_all = predicted_scores[i, :, :]
+            decoded_locs_all = decoded_locs
         # exit()
         # Check for each class
         for c in range(1, n_classes):
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
             class_scores = class_scores_all[:, c]  # (22536)
+            # print(class_scores.size())
             score_above_min_score = (class_scores > min_score).long()  # for indexing
-            # print(score_above_min_score.size(), score_above_min_score[:10])
+            # print(c, score_above_min_score.size())
+            # exit()
             n_above_min_score = torch.sum(score_above_min_score).item()
 
             if n_above_min_score == 0:
                 continue
 
-            class_scores = class_scores[torch.nonzero(score_above_min_score)].squeeze(
-                dim=1)  # (n_qualified), n_min_score <= 22536
+            # print(class_scores.size(), torch.nonzero(score_above_min_score).squeeze(dim=1).size())
 
-            class_decoded_locs = decoded_locs[torch.nonzero(score_above_min_score)].squeeze(
-                dim=1)  # (n_qualified, 4)
+            class_scores = torch.index_select(class_scores, dim=0,
+                                              index=torch.nonzero(score_above_min_score).squeeze(dim=1))
+
+            class_decoded_locs = torch.index_select(decoded_locs_all, dim=0,
+                                                    index=torch.nonzero(score_above_min_score).squeeze(dim=1))
 
             anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
 
             # Store only unsuppressed boxes for this class
-            # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0))
+            # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),
+            #       torch.LongTensor(anchor_nms_idx.size(0) * [c]).size(), class_scores[anchor_nms_idx].size())
             image_boxes.append(class_decoded_locs[anchor_nms_idx, :])
             image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c]).to(device))
             image_scores.append(class_scores[anchor_nms_idx])
-
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:
             image_boxes.append(torch.FloatTensor([[0., 0., 1., 1.]]).to(device))

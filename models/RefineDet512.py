@@ -818,7 +818,7 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss
+        return conf_loss + self.alpha * loc_loss * 2
 
     def compute_odm_loss(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
@@ -849,7 +849,7 @@ class RefineDetLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy)).clamp_(0, 1)
+            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy)).clamp(0, 1)
             overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -891,13 +891,13 @@ class RefineDetLoss(nn.Module):
         # Eliminate easy background bboxes from ARM
         arm_scores_prob = F.softmax(arm_scores, dim=2)
         easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
-        positive_priors[easy_negative_idx] = 0
+        # positive_priors[easy_negative_idx] = 0
 
         # LOCALIZATION LOSS
-        # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
-        #                           true_locs[positive_priors].view(-1, 4))
-        loc_loss = self.smooth_l1(odm_locs[positive_priors].view(-1, 4),
-                                  true_locs_encoded[positive_priors].view(-1, 4))
+        loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
+                                  true_locs[positive_priors].view(-1, 4))
+        # loc_loss = self.smooth_l1(odm_locs[positive_priors].view(-1, 4),
+        #                           true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
@@ -917,6 +917,9 @@ class RefineDetLoss(nn.Module):
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
         conf_loss_neg[easy_negative_idx] = 0.
+        # print(conf_loss_neg.size(), conf_loss_neg[positive_priors, :].size(), conf_loss_neg[easy_negative_idx, :].size())
+        # print(positive_priors.size(), easy_negative_idx.size())
+        # exit()
 
         conf_loss_neg, _ = conf_loss_neg.sort(dim=0,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
@@ -928,12 +931,12 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss
+        return conf_loss + self.alpha * loc_loss * 5.
 
     def forward(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
         :param arm_locs: offset prediction and binary classification scores from Anchor Refinement Modules
-        :param arm_scores:
+        :param arm_scores:10
         :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
         :param odm_scores:
         :param boxes: gt bbox and labels
@@ -944,4 +947,4 @@ class RefineDetLoss(nn.Module):
         odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + odm_loss
+        return arm_loss + odm_loss * 2.
