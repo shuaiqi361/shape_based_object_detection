@@ -17,7 +17,8 @@ def focal_loss(y_pred, y_true, alpha=0.25, gamma=2., device='cuda:0'):
     n_positives = (y_true != 0).sum()  # all postive anchors for 20 class
 
     y_true = torch.eye(y_pred.shape[-1])[y_true].to(device)  # one hot vector for all prediction
-    y_pred = F.softmax(y_pred, dim=1)  # apply softmax
+    # y_pred = F.softmax(y_pred, dim=1)  # apply softmax
+    y_pred = y_pred.sigmoid()
 
     # in the dataset background classes is taken in the front so 1 background class + 20 classes = 21 classes
     back_pred = y_pred[:, 0:1]  # 1st column background
@@ -34,8 +35,8 @@ def focal_loss(y_pred, y_true, alpha=0.25, gamma=2., device='cuda:0'):
     loss = alpha_factor * (focal_weight ** gamma) * cross_entropy  # focal loss with modulating factor
 
     # normalize the loss with positive anchors
-    return loss.sum() / len(y_pred)
-    # return loss.sum() / n_positives  # if want to use it for anything else other then SSD use loss = loss.sum()/len(y_pred)
+    # return loss.sum() / len(y_pred)
+    return loss.sum()
 
 
 class SigmoidFocalLoss(nn.Module):
@@ -46,24 +47,31 @@ class SigmoidFocalLoss(nn.Module):
         self.device = config.device
 
     def forward(self, out, target):
+        # print(out.size(), target.size())
         n_class = out.shape[1]
         class_ids = torch.arange(
-            1, n_class + 1, dtype=target.dtype, device=target.device
+            0, n_class, dtype=target.dtype, device=target.device
         ).unsqueeze(0)
+        # print(class_ids.size())
 
         t = target.unsqueeze(1)
-        p = torch.sigmoid(out).clamp_(min=1e-4, max=1-1e-4)
+        p = torch.sigmoid(out).clamp(min=1e-4, max=1-1e-4)
 
         gamma = self.gamma
         alpha = self.alpha
 
         term1 = (1 - p) ** gamma * torch.log(p)
         term2 = p ** gamma * torch.log(1 - p)
+        # print('Sigmoid focal:', (t == class_ids).float().size(), term1.size())
 
-        loss = (
-                -(t == class_ids).float() * alpha * term1
-                - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
-        )
+        # loss = (
+        #         -(t == class_ids).float() * alpha * term1
+        #         - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
+        # )
+        y = (t == class_ids).float()
+
+        loss = -y * alpha * term1 - (1 - y) * (1 - alpha) * term2
+        # exit()
 
         return loss.sum()
 

@@ -124,7 +124,7 @@ class ClassificationModel(nn.Module):
         self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
-        self.output_act = nn.Sigmoid()
+        # self.output_act = nn.Sigmoid()
 
     def forward(self, x):
         out = self.conv1(x)
@@ -392,6 +392,7 @@ class RetinaFocalLoss(nn.Module):
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
         negative_priors = true_neg_classes == -1
+        n_positives = positive_priors.sum(dim=1)  # (N)
 
         # LOCALIZATION LOSS
         if self.config.reg_loss.upper() == 'DIOU':
@@ -407,12 +408,14 @@ class RetinaFocalLoss(nn.Module):
                                            predicted_scores[negative_priors]], dim=0)
             target_class = torch.cat([true_classes[positive_priors],
                                       true_classes[negative_priors]], dim=0)
+
             conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                        target_class.view(-1)) / torch.nonzero(positive_priors > 0).numel()
+                                        target_class.view(-1)) / n_positives.sum().float()
+            # conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
+            #                             target_class.view(-1), device=self.config.device) / n_positives.sum().float()
         else:
             # Number of positive and hard-negative priors per image
             # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())
-            n_positives = positive_priors.sum(dim=1)  # (N)
             n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
             # First, find the loss for all priors
