@@ -116,7 +116,8 @@ def expand(image, boxes, filler):
     new_image[:, top:bottom, left:right] = image
 
     # Adjust bounding boxes' coordinates accordingly
-    new_boxes = boxes + torch.FloatTensor([left, top, left, top]).unsqueeze(0)  # (n_objects, 4), n_objects is the no. of objects in this image
+    new_boxes = boxes + torch.FloatTensor([left, top, left, top]).unsqueeze(
+        0)  # (n_objects, 4), n_objects is the no. of objects in this image
 
     return new_image, new_boxes
 
@@ -253,6 +254,41 @@ def resize(image, boxes, dims, return_percent_coords=True):
     return new_image, new_boxes
 
 
+def resize_keep(image, boxes, dims, return_percent_coords=True):
+    """
+    Resize image while keeping the orientation, the aspect ratio will change slightly. For the SSD300, resize to (300, 300).
+
+    Since percent/fractional coordinates are calculated for the bounding boxes (w.r.t image dimensions) in this process,
+    you may choose to retain them.
+
+    :param return_percent_coords: coordinates range [0, 1] or actual coordinates
+    :param dims: image size after resizing
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :return: resized image, updated bounding box coordinates (or fractional coordinates, in which case they remain the same)
+    """
+    # Resize image
+    width, height = image.size
+    if width > height:
+        if dims[0] < dims[1]:
+            dims = (dims[1], dims[0])
+    else:
+        if dims[0] > dims[1]:
+            dims = (dims[1], dims[0])
+
+    new_image = FT.resize(image, dims)
+
+    # Resize bounding boxes
+    old_dims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
+    new_boxes = boxes / old_dims  # percent coordinates
+
+    if not return_percent_coords:
+        new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
+        new_boxes = new_boxes * new_dims
+
+    return new_image, new_boxes
+
+
 def photometric_distort(image):
     """
     Distort brightness, contrast, saturation, and hue, each with a 50% chance, in random order.
@@ -284,10 +320,11 @@ def photometric_distort(image):
     return new_image
 
 
-def transform(image, boxes, labels, split, resize_dim, operation_list=['expand', 'random_crop']):
+def transform(image, boxes, labels, split, resize_dim, config):
     """
     Apply the transformations above.
 
+    :param config:
     :param operation_list:
     :param resize_dim:
     :param resize: resize training images
@@ -299,6 +336,8 @@ def transform(image, boxes, labels, split, resize_dim, operation_list=['expand',
     :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
     """
     assert split in {'TRAIN', 'TEST', 'VAL'}
+    operation_list = config.model['operation_list']
+    return_percent_coords = config.model['return_percent_coords']
 
     # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
     # see: https://pytorch.org/docs/stable/torchvision/models.html
@@ -333,7 +372,7 @@ def transform(image, boxes, labels, split, resize_dim, operation_list=['expand',
             new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image
-    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim)
+    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)

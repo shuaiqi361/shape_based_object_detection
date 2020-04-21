@@ -48,7 +48,7 @@ class PascalVOCDataset(Dataset):
         # Apply transformations
         image, boxes, labels, = transform(image, boxes, labels,
                                           split=self.split, resize_dim=self.input_size,
-                                          operation_list=self.config.model['operation_list'])
+                                          config=self.config)
 
         return image, boxes, labels, ids, difficulties
 
@@ -127,7 +127,7 @@ class COCO17Dataset(Dataset):
         # Apply transformations
         image, boxes, labels = transform(image, boxes, labels,
                                          split=self.split, resize_dim=self.input_size,
-                                         operation_list=self.config.model['operation_list'])
+                                         config=self.config)
         return image, boxes, labels, ids, difficulties
 
     def __len__(self):
@@ -217,7 +217,7 @@ class TrafficDataset(Dataset):
         # Apply transformations
         image, boxes, labels = transform(image, boxes, labels,
                                          split=self.split,
-                                         resize_dim=self.input_size, operation_list=self.config.operation_list)
+                                         resize_dim=self.input_size, config=self.config)
 
         return image, boxes, labels, ids
 

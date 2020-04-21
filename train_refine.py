@@ -300,7 +300,7 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Forward prop.
             time_start = time.time()
-            _, _, _, _, predicted_locs, predicted_scores, prior_negatives_idx = model(images)
+            _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(images)
 
             if config.data_name.upper() == 'COCO':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
@@ -317,7 +317,7 @@ def evaluate(test_loader, model, optimizer, config):
                            min_score=config.nms['min_score'],
                            max_overlap=config.nms['max_overlap'],
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                           config=config, prior_negatives_idx=prior_negatives_idx)
+                           config=config, prior_positives_idx=prior_positives_idx)
             else:
                 raise NotImplementedError
 

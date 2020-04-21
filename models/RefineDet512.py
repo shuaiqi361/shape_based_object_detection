@@ -633,9 +633,9 @@ class RefineDet512(nn.Module):
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
         raw_locs = self.offset2bbox(arm_locs, odm_locs)
         # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
-        prior_negative_idx = (arm_scores[:, :, 1] < self.theta).long()  # (batchsize, n_priors)
+        prior_positive_idx = (arm_scores[:, :, 1] > self.theta).long()  # (batchsize, n_priors)
 
-        return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_negative_idx
+        return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_positive_idx
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -648,19 +648,6 @@ class RefineDet512(nn.Module):
             true_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], init_bbox_cxcy))
 
         return true_locs
-
-    def remove_background(self, arm_scores, odm_scores, true_locs):
-        # print(arm_scores.size(), odm_scores.size(), true_locs.size())
-        # non_object_idx = arm_scores[:, :, 1] < self.theta
-        prior_positive_idx = (arm_scores[:, :, 1] > self.theta).long()
-        # clean_scores = odm_scores[non_object_idx, :]
-        # clean_locs = true_locs[non_object_idx, :]
-        # print('remove_background objects.')
-        # print(non_object_idx.size(), clean_scores.size(), clean_locs.size())
-        # print(clean_locs.size(), clean_scores.size())
-        # exit()
-
-        return prior_positive_idx
 
     def create_prior_boxes(self):
         """
@@ -818,7 +805,7 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss * 2
+        return conf_loss + self.alpha * loc_loss
 
     def compute_odm_loss(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
@@ -841,7 +828,6 @@ class RefineDetLoss(nn.Module):
         # Calculate ARM loss: offset smoothl1 + binary classification loss
         decoded_arm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
@@ -947,4 +933,4 @@ class RefineDetLoss(nn.Module):
         odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + odm_loss * 2.
+        return arm_loss + odm_loss

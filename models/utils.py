@@ -89,7 +89,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
     For each class, perform Non-Maximum Suppression (NMS) on boxes that are above a minimum threshold.
-
+    Modified, so that each bounding box can only be assigned to one objects
     :param predicted_locs: predicted locations/boxes w.r.t the 22536 prior boxes, a tensor of dimensions (N, 22536, 4)
     :param predicted_scores: class scores for each of the encoded locations/boxes, a tensor of dimensions (N, 22536, n_classes)
     :param min_score: minimum threshold for a box to be considered a match for a certain class
@@ -123,7 +123,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
             decoded_locs = cxcy_to_xy(
                 gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
         elif box_type == 'center':
-            decoded_locs = cxcy_to_xy(predicted_locs).clamp_(0, 1)
+            decoded_locs = cxcy_to_xy(predicted_locs[i]).clamp_(0, 1)
         else:
             decoded_locs = predicted_locs[i].clamp_(0, 1)
 
@@ -132,22 +132,24 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
         image_labels = list()
         image_scores = list()
 
-        max_scores = torch.max(predicted_scores[i, :, 1:], dim=1, keepdim=True)[0]
-        score_above_min_score = (max_scores > min_score)[:, 0].long()
+        max_scores = torch.max(predicted_scores[i, :, 1:], dim=1)[0]  # Excluding background
+        score_above_min_score = (max_scores > min_score).squeeze(dim=1).long()  # (n_priors,)
         n_above_min_score = torch.sum(score_above_min_score).item()  # find valid class labels
 
         if n_above_min_score > 0:
-            valid_scores = predicted_scores[i, score_above_min_score, :]
-            valid_anchors = decoded_locs[score_above_min_score, :]
-            valid_max_scores = max_scores[score_above_min_score, :]
+            valid_scores = torch.index_select(predicted_scores[i], dim=0, index=score_above_min_score)
+            valid_anchors = torch.index_select(decoded_locs, dim=0, index=score_above_min_score)
+            valid_max_scores = torch.index_select(max_scores, dim=0, index=score_above_min_score)
+            print(max_scores.size(), valid_scores.size())
 
-            anchor_nms_idx = nms(valid_anchors, valid_max_scores.squeeze(-1), max_overlap)
+            anchor_nms_idx = nms(valid_anchors, valid_max_scores, max_overlap)
 
-            nms_scores, nms_classes = valid_scores[anchor_nms_idx, 1:].max(dim=1)
-
-            image_boxes.append(valid_anchors[anchor_nms_idx, :])
-            image_labels.append((nms_classes + 1).to(device))
+            nms_scores, nms_classes = torch.index_select(valid_scores, dim=0, index=anchor_nms_idx).max(dim=1)
+            print(anchor_nms_idx.size(), nms_scores.size(), nms_classes.size())
+            image_boxes.append(torch.index_select(valid_anchors, dim=0, index=anchor_nms_idx))
+            image_labels.append(nms_classes.to(device))
             image_scores.append(nms_scores)
+            exit()
 
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:
@@ -176,7 +178,7 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     return all_images_boxes, all_images_labels, all_images_scores
 
 
-def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config, prior_negatives_idx=None):
+def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, config, prior_positives_idx=None):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -227,12 +229,11 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
         image_scores = list()
 
         # max_scores, best_label = predicted_scores[i].max(dim=1)  # (22536)
-        if prior_negatives_idx is not None:
-            # print(prior_negatives_idx.size(), predicted_scores.size(), decoded_locs.size())
+        if prior_positives_idx is not None:
             class_scores_all = torch.index_select(predicted_scores[i], dim=0,
-                                                  index=prior_negatives_idx[i].nonzero().squeeze(-1))
+                                                  index=prior_positives_idx[i].nonzero().squeeze(-1))
             decoded_locs_all = torch.index_select(decoded_locs, dim=0,
-                                                  index=prior_negatives_idx[i].nonzero().squeeze(-1))
+                                                  index=prior_positives_idx[i].nonzero().squeeze(-1))
             # class_scores_all[prior_negatives_idx[i], :] = 0.  # not used for detect objects
             # print(class_scores_all.size(), decoded_locs_all.size(), prior_negatives_idx.size())
 
