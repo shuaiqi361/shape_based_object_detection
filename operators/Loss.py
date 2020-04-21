@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .iou_utils import match_ious, bbox_overlaps_iou, bbox_overlaps_ciou, bbox_overlaps_diou, bbox_overlaps_giou, \
-    decode, match, log_sum_exp
+from .iou_utils import bbox_overlaps_iou, bbox_overlaps_ciou, bbox_overlaps_diou, bbox_overlaps_giou, \
+    decode
 from torch.autograd import Variable
 
 
@@ -139,11 +139,11 @@ class IouLoss(nn.Module):
     def __init__(self, pred_mode='Corner', reduce='mean', variances=None, losstype='Diou'):
         super(IouLoss, self).__init__()
         self.reduce = reduce
-        self.pred_mode = pred_mode
+        self.pred_mode = pred_mode  # predicted locs should be top-left and bottom-right corner conventions
         self.variances = variances
         self.loss = losstype
 
-    def forward(self, loc_p, loc_t, prior_data=None):
+    def forward(self, loc_p, loc_t, prior_data=None, weights=None):
         num = loc_p.shape[0]
 
         if self.pred_mode == 'Center':
@@ -152,21 +152,25 @@ class IouLoss(nn.Module):
         else:
             decoded_boxes = loc_p
         if self.loss == 'Iou':
-            loss = torch.sum(1.0 - bbox_overlaps_iou(decoded_boxes, loc_t))
+            loss = 1.0 - bbox_overlaps_iou(decoded_boxes, loc_t)
         else:
             if self.loss == 'Giou':
-                loss = torch.sum(1.0 - bbox_overlaps_giou(decoded_boxes, loc_t))
+                loss = 1.0 - bbox_overlaps_giou(decoded_boxes, loc_t)
             else:
                 if self.loss == 'Diou':
-                    loss = torch.sum(1.0 - bbox_overlaps_diou(decoded_boxes, loc_t))
+                    loss = 1.0 - bbox_overlaps_diou(decoded_boxes, loc_t)
                 else:
-                    loss = torch.sum(1.0 - bbox_overlaps_ciou(decoded_boxes, loc_t))
+                    loss = 1.0 - bbox_overlaps_ciou(decoded_boxes, loc_t)
 
-        if self.reduce == 'mean':
-            loss = loss / num
+        if weights is not None and weights.sum() > 1e-6:
+            return (loss * weights).sum() / weights.sum()
         else:
-            loss = loss
-        return loss
+            if self.reduce == 'mean':
+                loss = loss.sum() / num
+            else:
+                loss = loss.sum()
+
+            return loss
 
 
 class SmoothL1Loss(nn.Module):
@@ -178,29 +182,19 @@ class SmoothL1Loss(nn.Module):
         self.reduction = reduction
 
     def forward(self, pred, target, weights=None):
-
-        if weights is not None:
-            assert pred.size(0) == target.size(0) == weights.size(0)
-            x = (pred - target).abs()
-            l1 = x - 0.5 * self.beta
-            l2 = 0.5 * x ** 2 / self.beta
-            l1_loss = torch.where(x >= self.beta, l1, l2)
-            l1_loss = l1_loss / weights
-
-            if self.reduction == 'mean':
-                return l1_loss.mean()
-            elif self.reduction == 'sum':
-                return l1_loss.sum()
-            else:
-                return l1_loss
+        num = pred.size(0)
 
         x = (pred - target).abs()
         l1 = x - 0.5 * self.beta
         l2 = 0.5 * x ** 2 / self.beta
         l1_loss = torch.where(x >= self.beta, l1, l2)
-        if self.reduction == 'mean':
-            return l1_loss.mean()
-        elif self.reduction == 'sum':
-            return l1_loss.sum()
+
+        if weights is not None and weights.sum() > 1e-6:
+            assert pred.size(0) == target.size(0) == weights.size(0)
+            return (l1_loss * weights).sum() / weights.sum()
         else:
-            return l1_loss
+            if self.reduction == 'mean':
+                return l1_loss.sum() / num
+            else:
+                return l1_loss.sum()
+

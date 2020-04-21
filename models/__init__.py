@@ -2,6 +2,7 @@ from .SSD300 import SSD300, MultiBoxLoss300
 from .SSD512 import SSD512, MultiBoxLoss512
 from .RetinaNet import resnet50, resnet101, RetinaFocalLoss
 from .RefineDet512 import RefineDet512, RefineDetLoss
+from .FCOSDet import resnet50_fcos, resnet101_fcos, FCOSLoss
 
 
 def model_entry(config):
@@ -20,6 +21,12 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'REFINEDET':
         print('Loading RefineDet with VGG-16(512) backbone ......')
         return RefineDet512(config['n_classes'], config=config), RefineDetLoss
+    elif config.model['arch'].upper() == 'FCOS50':
+        print('Loading Fully Convolutional One-Stage detector(FCOS) with ResNet-50 backbone ......')
+        return resnet50_fcos(config['n_classes'], config=config), FCOSLoss
+    elif config.model['arch'].upper() == 'FCOS101':
+        print('Loading Fully Convolutional One-Stage detector(FCOS) with ResNet-101 backbone ......')
+        return resnet101_fcos(config['n_classes'], config=config), FCOSLoss
     else:
         print('Try other models.')
         raise NotImplementedError

@@ -170,6 +170,7 @@ class FCOS(nn.Module):
         self.prior = prior
         self.n_classes = n_classes
         self.device = device
+        self.INF = 1e6
         self.locations = self.compute_location()
 
         self.fmap_dims = {'c3': 64,
@@ -300,6 +301,8 @@ class FCOSLoss(nn.Module):
         self.n_classes = config.n_classes
         self.config = config
         self.locations = locations
+        self.center_sample = center_sample
+        self.INF = 1e6
 
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
@@ -317,27 +320,147 @@ class FCOSLoss(nn.Module):
     def prepare_targets(self, locations, boxes, labels):
         valid_sizes = []
         n_locations_per_level = []
+        batch_size = len(labels)
 
-        for i, locations_per_level in enumerate(locations):
+        for i, locations_per_level in enumerate(locations):  # list of length 5, each element is a tensor of n, 2
             size_per_level = locations_per_level.new_tensor(self.sizes[i])
             valid_sizes.append(size_per_level[None].expand(len(locations_per_level), -1))
             n_locations_per_level.append(len(locations_per_level))
 
         valid_sizes = torch.cat(valid_sizes, dim=0)  # cat valid sizes for all levels of features
-        all_locations = torch.cat(locations, dim=0)
+        all_locations = torch.cat(locations, dim=0)  # n_cells, 2
 
-        labels, bbox_targets = self.assign_targets(all_locations, boxes, labels, valid_sizes, n_locations_per_level)
+        label_targets_all = list()
+        bbox_targets_all = list()
+        for i in range(batch_size):
+            label_target, bbox_target = self.assign_targets(all_locations, boxes[i],
+                                                            labels[i], valid_sizes, n_locations_per_level)
+            # split the labels for each image according to the level of feature pyramid
+            label_target = torch.split(label_target, n_locations_per_level, dim=0)
+            bbox_target = torch.split(bbox_target, n_locations_per_level, dim=0)
+            label_targets_all.append(label_target)
+            bbox_targets_all.append(bbox_target)
 
+        labels_batch = list()
+        bboxes_batch = list()
+
+        for level in range(len(locations)):
+            # cat all labels and bboxes, list of five (batch_size x n_cells/level, )
+            labels_batch.append(torch.cat([label_per_image[level] for label_per_image in label_targets_all], dim=0))
+            bboxes_batch.append(torch.cat([bbox_per_image[level] for bbox_per_image in bbox_targets_all], dim=0))
+
+        return labels_batch, bboxes_batch
 
     def assign_targets(self, locations, boxes, labels, valid_sizes, n_locations_per_level):
-        labels = list()
-        bbox_targets = list()
+        """
+        :param locations: (n_cells, 2) all possible locations on different levels of feature maps
+        :param boxes: n_boxes, 4, x1y2, x2y2
+        :param labels: n_boxes,
+        :param valid_sizes: list of 5 lists(range)
+        :param n_locations_per_level: list of integers, indicating number of cells on each pyramidal level
+        :return:
+        """
+        assert locations.size(1) == 2
+
+        locs_x, locs_y = locations[:, 0], locations[:, 1]  # (n_cells,)
+
+        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])  # (n_cells,)
+        if areas.size(0) > 1:
+            areas, area_sort_id = areas.sort(dim=0, descending=True)
+            labels = labels[area_sort_id]
+
+        # init targets
+        l = locs_x[:, None] - boxes[:, 0][None]  # (n_cells, 1) - (1, n_boxes) = (n_cells, n_boxes)
+        t = locs_y[:, None] - boxes[:, 1][None]
+        r = boxes[:, 2][None] - locs_x[:, None]
+        b = boxes[:, 3][None] - locs_y[:, None]  # (n_cells, n_boxes)
+
+        bbox_targets = torch.stack([l, t, r, b], dim=2)  # (n_cells, n_boxes, 4)
+
+        if self.center_sample:
+            within_bbox_range = self.get_sample_region(boxes, n_locations_per_level, locations)
+        else:
+            within_bbox_range = bbox_targets.min(dim=2)[0] > 0  # min of targets should be positive, (n_cells, n_boxes)
+
+        max_bbox_target = bbox_targets.max(dim=2)[0]  # find the max of the 4 targets to choose level of features
+
+        valid_in_level = (max_bbox_target >= valid_sizes[:, 0]) \
+                         and (max_bbox_target <= valid_sizes[:, 1])  # (n_cells,)
+
+        locs_gt_area = areas[None].repeat(locations.size(0), 1)  # (n_cells, n_boxes)
+        locs_gt_area[within_bbox_range == 0] = self.INF  # assigned to background
+        locs_gt_area[valid_in_level == 0] = self.INF  # assigned to other levels of feature
+
+        locs_min_area, locs_gt_idx = locs_gt_area.min(dim=1)  # find the target from the minimum enclosing bbox
+        bbox_targets = bbox_targets[:, locs_gt_idx]  # (n_cells, 4)
+        label_targets = labels[locs_gt_idx]
+        label_targets[locs_min_area == self.INF] = 0
+
+        return label_targets, bbox_targets
+
+    def get_sample_region(self, bboxes, n_locations_per_level, locations):
+        """
+        For each image in a batch
+        :param bboxes: (n_bboxes, 4), #objects in one image
+        :param strides:
+        :param n_locations_per_level:
+        :param locations:
+        :param radius:
+        :return:
+        """
         locs_x, locs_y = locations[:, 0], locations[:, 1]
+        n_objects = bboxes.size(0)
+        n_locs = len(locs_x)
+        bboxes = bboxes[None].expand(n_locs, n_objects, 4)
+        cx = (bboxes[:, :, 0] + bboxes[:, :, 2]) / 2.
+        cy = (bboxes[:, :, 1] + bboxes[:, :, 3]) / 2.
 
-        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-        l = locs_x - boxes[]
+        if cx[:, :, 0].sum() == 0:
+            return locs_x.new_zeros(locs_x.shape, dtype=torch.uint8)
 
+        center_bbox = bboxes.new_zeros(bboxes.shape)
 
+        # identify the radius for assigning ground truth boxes
+        begin_idx = 0
+        for level, n_cells in enumerate(n_locations_per_level):
+            end_idx = begin_idx + n_cells
+            stride = self.fpn_strides * self.radius
+
+            x_min = cx[begin_idx:end_idx] - stride  # bboxes defined by the strides
+            y_min = cy[begin_idx:end_idx] - stride
+            x_max = cx[begin_idx:end_idx] + stride
+            y_max = cy[begin_idx:end_idx] + stride
+            # compare radius with bboxes and adjust the new ground truth
+            center_bbox[begin_idx:end_idx, :, 0] = torch.where(x_min > bboxes[begin_idx:end_idx, :, 0],
+                                                               x_min, bboxes[begin_idx:end_idx, :, 0])
+            center_bbox[begin_idx:end_idx, :, 1] = torch.where(y_min > bboxes[begin_idx:end_idx, :, 1],
+                                                               y_min, bboxes[begin_idx:end_idx, :, 1])
+            center_bbox[begin_idx:end_idx, :, 2] = torch.where(x_max < bboxes[begin_idx:end_idx, :, 2],
+                                                               x_max, bboxes[begin_idx:end_idx, :, 2])
+            center_bbox[begin_idx:end_idx, :, 3] = torch.where(y_max < bboxes[begin_idx:end_idx, :, 3],
+                                                               y_max, bboxes[begin_idx:end_idx, :, 3])
+
+            begin_idx = end_idx
+
+        l = locs_x[:, None] - center_bbox[:, :, 0]
+        t = locs_y[:, None] - center_bbox[:, :, 1]
+        r = center_bbox[:, :, 2] - locs_x[:, None]
+        b = center_bbox[:, :, 3] - locs_y[:, None]
+
+        bbox_targets = torch.stack([l, t, r, b], dim=2)
+
+        within_bbox_range = bbox_targets.min(dim=2)[0] > 0
+
+        return within_bbox_range
+
+    def compute_centerness_targets(self, bboxes_targets_flat):
+        left_right = bboxes_targets_flat[:, [0, 2]]
+        top_bottom = bboxes_targets_flat[:, [1, 3]]
+        centerness = (left_right.min(-1)[0] / left_right.max(-1)[0]) * (
+                top_bottom.min(-1)[0] / top_bottom.max(-1)[0]
+        )
+
+        return torch.sqrt(centerness)
 
     def forward(self, predicted_locs, predicted_scores, predicted_centerness, boxes, labels):
         """
@@ -350,23 +473,55 @@ class FCOSLoss(nn.Module):
         :return: multibox loss, a scalar
         """
         batch_size = predicted_locs.size(0)
-        n_classes = predicted_scores.size(2)  # not including background
+        n_classes = predicted_scores.size(2)
 
-        # print(n_priors, predicted_locs.size(), predicted_scores.size())
         assert predicted_locs.size(1) == predicted_scores.size(1)
 
-        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
-        true_neg_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
+        labels_batch, bboxes_batch = self.prepare_targets(self.locations, boxes, labels)
 
+        pred_labels_flat = list()
+        pred_bboxes_flat = list()
+        pred_center_flat = list()
+        labels_batch_flat = list()
+        bboxes_batch_flat = list()
+
+        for i in range(batch_size):
+            pred_labels_flat.append(predicted_scores[i].view(-1, n_classes))
+            pred_bboxes_flat.append(predicted_locs[i].view(-1, 4))
+            pred_center_flat.append(predicted_centerness[i].view(-1))
+
+            labels_batch_flat.append(labels_batch[i].view(-1))
+            bboxes_batch_flat.append(bboxes_batch[i].view(-1, 4))
+
+        pred_labels_flat = torch.cat(pred_labels_flat, dim=0)
+        pred_bboxes_flat = torch.cat(pred_bboxes_flat, dim=0)
+        pred_center_flat = torch.cat(pred_center_flat, dim=0)
+        labels_batch_flat = torch.cat(labels_batch_flat, dim=0)
+        bboxes_batch_flat = torch.cat(bboxes_batch_flat, dim=0)
+
+        positives_idx = torch.nonzero(labels_batch_flat > 0).squeeze(1)
+
+        conf_loss = self.Focal_loss(pred_labels_flat,
+                                    labels_batch_flat.int()) / (
+                                positives_idx.numel() + batch_size)  # in case no positives
+
+        positives_pred_bboxes = pred_bboxes_flat[positives_idx]
+        positives_pred_center = pred_center_flat[positives_idx]
+        positivs_target_bboxes = bboxes_batch_flat[positives_idx]
+
+        if positives_idx.numel() > 0:
+            center_targets = self.compute_centerness_targets(positivs_target_bboxes)
+            loc_loss = self.Diou_loss(positives_pred_bboxes, positivs_target_bboxes, weights=center_targets)
+            center_loss = self.center_loss(positives_pred_center, center_targets)
+        else:
+            loc_loss = positives_pred_bboxes.sum()
+            center_loss = positives_pred_center.sum()
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss
+        return conf_loss + self.alpha * loc_loss + center_loss
 
 
-def resnet50(num_classes, config, pretrained=True, **kwargs):
+def resnet50_fcos(num_classes, config, pretrained=True, **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -374,13 +529,13 @@ def resnet50(num_classes, config, pretrained=True, **kwargs):
         :param pretrained:
         :param num_classes:
     """
-    model = RetinaNet(num_classes, Bottleneck, [3, 4, 6, 3], device=config.device)
+    model = FCOS(num_classes, Bottleneck, [3, 4, 6, 3], device=config.device)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet50'], model_dir='.'), strict=False)
     return model
 
 
-def resnet101(num_classes, config, pretrained=True, **kwargs):
+def resnet101_fcos(num_classes, config, pretrained=True, **kwargs):
     """Constructs a ResNet-101 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -388,7 +543,7 @@ def resnet101(num_classes, config, pretrained=True, **kwargs):
         :param pretrained:
         :param num_classes:
     """
-    model = RetinaNet(num_classes, Bottleneck, [3, 4, 23, 3], device=config.device)
+    model = FCOS(num_classes, Bottleneck, [3, 4, 23, 3], device=config.device)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet101'], model_dir='.'), strict=False)
     return model

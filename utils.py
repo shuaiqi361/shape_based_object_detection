@@ -21,6 +21,12 @@ def save_checkpoint(epoch, model, optimizer, name=None):
     torch.save(state, filename)
 
 
+def clip_sigmoid(input):
+    out = torch.clamp(torch.sigmoid(input), min=1e-4, max=1 - 1e-4)
+
+    return out
+
+
 def clip_gradient(optimizer, grad_clip):
     """
     Clips gradients computed during backpropagation to avoid explosion of gradients.
