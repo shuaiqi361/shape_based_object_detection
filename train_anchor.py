@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset
 from utils import create_logger, save_checkpoint, clip_gradient
 from models.utils import detect, detect_objects
 from metrics import AverageMeter, calculate_mAP
@@ -92,7 +92,14 @@ def main():
         start_epoch = 0
         model, criterion = model_entry(config)
         if args.finetune:
-            model.load_state_dict(args.load_path, strict=False)
+            checkpoint = torch.load(args.load_path)
+            init_model = checkpoint['model']
+            reuse_layers = {}
+            for param_tensor in init_model.state_dict().keys():
+                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('base.'):
+                    reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
+                    print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
+            model.load_state_dict(reuse_layers, strict=False)
             str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
             config.logger.info(str_info)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
@@ -129,6 +136,15 @@ def main():
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
+    elif config.data_name.upper() == 'TRAFFIC':
+        train_dataset = TrafficDataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=False)
+        test_dataset = TrafficDataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
@@ -318,6 +334,14 @@ def evaluate(test_loader, model, optimizer, config):
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                            config=config)
             elif config.data_name.upper() == 'VOC':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config)
+            elif config.data_name.upper() == 'TRAFFIC':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
                     detect(predicted_locs,
                            predicted_scores,
