@@ -212,14 +212,15 @@ class TrafficDataset(Dataset):
         objects = self.objects[i]
         boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
-        ids = self.images[i]
+        ids = objects['image_id']
+        difficulties = torch.LongTensor(objects['difficulties'])
 
         # Apply transformations
         image, boxes, labels = transform(image, boxes, labels,
                                          split=self.split,
                                          resize_dim=self.input_size, config=self.config)
 
-        return image, boxes, labels, ids
+        return image, boxes, labels, ids, difficulties
 
     def __len__(self):
         return len(self.images)
@@ -241,13 +242,15 @@ class TrafficDataset(Dataset):
         boxes = list()
         labels = list()
         ids = list()
+        difficulties = list()
 
         for b in batch:
             images.append(b[0])
             boxes.append(b[1])
             labels.append(b[2])
             ids.append(b[3])
+            difficulties.append(b[4])
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels, ids
+        return images, boxes, labels, ids, difficulties
