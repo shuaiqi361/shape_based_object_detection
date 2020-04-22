@@ -26,6 +26,7 @@ parser.add_argument('--load-path', default='', type=str)
 parser.add_argument('--save-path', default='', type=str)
 parser.add_argument('--recover', action='store_true')
 parser.add_argument('-e', '--evaluate', action='store_true')
+parser.add_argument('--finetune', action='store_true')
 
 
 def main():
@@ -73,6 +74,11 @@ def main():
     val_data_folder = config.val_data_root
     input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
+    now = datetime.now()
+    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                                'log_{}_{}.txt'.format(config.model['arch'],
+                                                                                       date_time)))
     # Learning parameters
     if args.recover:
         assert args.load_path is not None
@@ -85,6 +91,10 @@ def main():
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
+        if args.finetune:
+            model.load_state_dict(args.load_path, strict=False)
+            str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
+            config.logger.info(str_info)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
@@ -134,8 +144,6 @@ def main():
         model = model.to(config.device)
         optimizer = checkpoint['optimizer']
 
-        now = datetime.now()
-        date_time = now.strftime("%m-%d-%Y_H-%M-%S")
         config.logger = create_logger('global_logger', os.path.join(config.log_path,
                                                                     'eval_result_{}_{}.txt'.format(config.model['arch'],
                                                                                                    date_time)))
@@ -151,9 +159,7 @@ def main():
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
     config.tb_logger = SummaryWriter(config.event_path)
-    config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                'log_{}_{}.txt'.format(config.model['arch'],
-                                                                                       date_time)))
+
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
