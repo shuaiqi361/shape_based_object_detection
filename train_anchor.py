@@ -13,7 +13,7 @@ import argparse
 from easydict import EasyDict
 import json
 
-from scheduler import adjust_learning_rate
+from scheduler import adjust_learning_rate, warm_up_learning_rate
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset
 from utils import create_logger, save_checkpoint, clip_gradient
@@ -194,6 +194,9 @@ def main():
         # Decay learning rate at particular epochs
         if epoch in decay_lr_at:
             adjust_learning_rate(optimizer, decay_lr_to)
+
+        if 0 < epoch < 5:
+            warm_up_learning_rate(optimizer, epoch)
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 

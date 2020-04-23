@@ -51,7 +51,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
             continue
 
         bbox = annotation['bbox']
-        if bbox[2] < 1 or bbox[3] < 1:
+        if bbox[2] < 2 or bbox[3] < 2:
             print('Eliminate small objects for training < 1px.')
             continue
 
@@ -61,7 +61,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
                                          'cat_names': [], 'difficulties': []}
 
         corner_notation = [int(bbox[0]), int(bbox[1]),
-                           int(bbox[0] + bbox[2]) - 1, int(bbox[1] + bbox[3]) - 1]
+                           int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])]
         all_images_dict[image_id]['bbox'].append(corner_notation)
 
         img = coco.loadImgs(image_id)[0]
@@ -139,7 +139,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
         all_images_dict[image_id]['image_path'] = image_path
 
         corner_notation = [int(bbox[0]), int(bbox[1]),
-                           int(bbox[0] + bbox[2]) - 1, int(bbox[1] + bbox[3]) - 1]
+                           int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])]
         all_images_dict[image_id]['bbox'].append(corner_notation)
 
         cat_id = annotation['category_id']

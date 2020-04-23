@@ -14,3 +14,16 @@ def adjust_learning_rate(optimizer, scale):
         param_group['lr'] = param_group['lr'] * scale
 
     print("DECAYING learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))
+
+
+def warm_up_learning_rate(optimizer, epoch):
+    """
+    Scale learning rate by a specified factor.
+
+    :param optimizer: optimizer whose learning rate must be shrunk.
+    :param scale: factor to multiply learning rate with.
+    """
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = param_group['lr'] * 2.
+
+    print("DECAYING learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))
