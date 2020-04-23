@@ -16,7 +16,7 @@ def adjust_learning_rate(optimizer, scale):
     print("DECAYING learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))
 
 
-def warm_up_learning_rate(optimizer, epoch):
+def warm_up_learning_rate(optimizer, epoch, rate=4.):
     """
     Scale learning rate by a specified factor.
 
@@ -24,6 +24,6 @@ def warm_up_learning_rate(optimizer, epoch):
     :param scale: factor to multiply learning rate with.
     """
     for param_group in optimizer.param_groups:
-        param_group['lr'] = param_group['lr'] * 2.
+        param_group['lr'] = param_group['lr'] * rate
 
-    print("DECAYING learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))
+    print("WARMING up learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))

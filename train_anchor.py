@@ -195,7 +195,7 @@ def main():
         if epoch in decay_lr_at:
             adjust_learning_rate(optimizer, decay_lr_to)
 
-        if 0 < epoch < 5:
+        if 0 < epoch < 3:
             warm_up_learning_rate(optimizer, epoch)
 
         config.tb_logger.add_scalar('learning_rate', epoch)
