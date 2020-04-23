@@ -357,9 +357,9 @@ class ARMConvolutions(nn.Module):
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'conv4_3': 3,
-                   'conv7': 3,
-                   'conv8_2': 3,
-                   'conv9_2': 3}
+                   'conv7': 9,
+                   'conv8_2': 15,
+                   'conv9_2': 15}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(self.feat_channels['conv4_3'], n_boxes['conv4_3'] * 4,
@@ -473,9 +473,9 @@ class ODMConvolutions(nn.Module):
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'conv4_3': 3,
-                   'conv7': 3,
-                   'conv8_2': 3,
-                   'conv9_2': 3}
+                   'conv7': 9,
+                   'conv8_2': 15,
+                   'conv9_2': 15}
 
         self.feat_channels = {'conv4_3': 512,
                               'conv7': 1024,
@@ -660,15 +660,15 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.0625,
-                      'conv7': 0.125,
-                      'conv8_2': 0.25,
-                      'conv9_2': 0.5}
-
-        aspect_ratios = {'conv4_3': [1., 2., 0.5],
+        obj_scales = {'conv4_3': 0.05,
+                      'conv7': 0.15,
+                      'conv8_2': 0.3,
+                      'conv9_2': 0.6}
+        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1., 2., 0.5],
-                         'conv8_2': [1., 2., 0.5],
-                         'conv9_2': [1., 2., 0.5]}
+                         'conv8_2': [1., 2., 3., 0.5, 0.333],
+                         'conv9_2': [1., 2., 3., 0.5, 0.333]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -681,7 +681,9 @@ class RefineDet512(nn.Module):
                     cy = (i + 0.5) / fmap_dims[fmap]
 
                     for ratio in aspect_ratios[fmap]:
-                        prior_boxes.append([cx, cy, obj_scales[fmap] * sqrt(ratio), obj_scales[fmap] / sqrt(ratio)])
+                        for fac in scale_factor:
+                            prior_boxes.append([cx, cy, obj_scales[fmap] * fac * sqrt(ratio),
+                                                obj_scales[fmap] * fac / sqrt(ratio)])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
         prior_boxes.clamp_(0, 1)
@@ -884,7 +886,7 @@ class RefineDetLoss(nn.Module):
         # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
         #                           true_locs[positive_priors].view(-1, 4))
         loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
-                                  true_locs_encoded[positive_priors].view(-1, 4))
+                                 true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
@@ -918,7 +920,7 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss * 2.
+        return conf_loss + self.alpha * loc_loss * 4.
 
     def forward(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
@@ -934,4 +936,4 @@ class RefineDetLoss(nn.Module):
         odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + odm_loss * 2.
+        return arm_loss + odm_loss
