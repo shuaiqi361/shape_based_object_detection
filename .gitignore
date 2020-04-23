@@ -9,3 +9,4 @@ pycocotools/*
 dataset/__pycache__/*
 models/__pycache__/*
 experiment/*
+detect_scripts/__pycache__/*

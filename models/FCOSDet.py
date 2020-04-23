@@ -250,6 +250,25 @@ class FCOS(nn.Module):
 
         return locations
 
+    def postprocess(self, box_pred, cls_pred, center_pred):
+        batch_size = cls_pred.size(0)
+        # n_classes = cls_pred.size(1)
+        cls_pred = cls_pred.sigmoid()  # sigmoid focal loss
+        center_pred = center_pred.sigmoid()  # sigmoid binary cross entropy loss
+
+        cls_pred = cls_pred * center_pred[:, :, None]
+
+        locations = torch.cat(self.locations, dim=0)  # n_cells, 2
+        n_cells = locations.size(0)
+        predicted_locs = torch.zeros((batch_size, n_cells, 4), dtype=torch.float).to(self.config.device)
+        for i in range(batch_size):
+            predicted_locs[i, :, 0] = locations[:, 0] - box_pred[i, :, 0]
+            predicted_locs[i, :, 1] = locations[:, 1] - box_pred[i, :, 1]
+            predicted_locs[i, :, 2] = locations[:, 0] + box_pred[i, :, 2]
+            predicted_locs[i, :, 3] = locations[:, 1] + box_pred[i, :, 3]
+
+        return predicted_locs, cls_pred
+
     def forward(self, image):
 
         x = self.conv1(image)
@@ -281,6 +300,10 @@ class FCOS(nn.Module):
             class_scores.append(cls_out)
             locs.append(bbox_out)
             centerness.append(center_out)
+
+        locs = torch.cat(locs, dim=1)
+        class_scores = torch.cat(class_scores, dim=1)
+        centerness = torch.cat(centerness, dim=1)
 
         return locs, class_scores, centerness
 
@@ -503,7 +526,7 @@ class FCOSLoss(nn.Module):
 
         conf_loss = self.Focal_loss(pred_labels_flat,
                                     labels_batch_flat.int()) / (
-                                positives_idx.numel() + batch_size)  # in case no positives
+                            positives_idx.numel() + batch_size)  # in case no positives
 
         positives_pred_bboxes = pred_bboxes_flat[positives_idx]
         positives_pred_center = pred_center_flat[positives_idx]
