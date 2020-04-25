@@ -920,7 +920,7 @@ class RefineDetLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss * 4.
+        return conf_loss + self.alpha * loc_loss * 2.
 
     def forward(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
         """
@@ -933,7 +933,7 @@ class RefineDetLoss(nn.Module):
         :return:
         """
         arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs.detach(), arm_scores.detach(), odm_locs, odm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
         return arm_loss + odm_loss
