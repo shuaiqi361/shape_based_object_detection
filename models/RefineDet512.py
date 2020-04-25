@@ -356,7 +356,7 @@ class ARMConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 3,
+        n_boxes = {'conv4_3': 9,
                    'conv7': 9,
                    'conv8_2': 15,
                    'conv9_2': 15}
@@ -472,7 +472,7 @@ class ODMConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 3,
+        n_boxes = {'conv4_3': 9,
                    'conv7': 9,
                    'conv8_2': 15,
                    'conv9_2': 15}
@@ -665,7 +665,7 @@ class RefineDet512(nn.Module):
                       'conv8_2': 0.3,
                       'conv9_2': 0.6}
         scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
-        aspect_ratios = {'conv4_3': [1.],
+        aspect_ratios = {'conv4_3': [1., 2, 0.5],
                          'conv7': [1., 2., 0.5],
                          'conv8_2': [1., 2., 3., 0.5, 0.333],
                          'conv9_2': [1., 2., 3., 0.5, 0.333]}
