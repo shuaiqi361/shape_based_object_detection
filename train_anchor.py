@@ -195,8 +195,8 @@ def main():
         if epoch in decay_lr_at:
             adjust_learning_rate(optimizer, decay_lr_to)
 
-        if 0 < epoch < 3:
-            warm_up_learning_rate(optimizer, epoch)
+        # if 0 < epoch < 3:
+        #     warm_up_learning_rate(optimizer, epoch)
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
@@ -240,6 +240,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     :param optimizer: optimizer
     :param epoch: epoch number
     """
+
     model.train()  # training mode enables dropout
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
@@ -252,6 +253,9 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     # Batches
 
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
+        if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
+            warm_up_learning_rate(optimizer, rate=4.)
+
         data_time.update(time.time() - start)
 
         # Move to default device
