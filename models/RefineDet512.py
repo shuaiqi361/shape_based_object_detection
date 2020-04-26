@@ -660,7 +660,7 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.05,
+        obj_scales = {'conv4_3': 0.06,
                       'conv7': 0.15,
                       'conv8_2': 0.3,
                       'conv9_2': 0.6}
@@ -713,9 +713,9 @@ class RefineDetLoss(nn.Module):
 
         self.arm_loss = nn.L1Loss()
         self.odm_loss = nn.L1Loss()
-        self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = focal_loss
+        # self.Focal_loss = focal_loss
 
     def increase_threshold(self, increment=0.05):
         if self.threshold + increment >= 0.7:
@@ -859,7 +859,7 @@ class RefineDetLoss(nn.Module):
             overlap_for_each_prior[prior_for_each_object] = 1.
 
             # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]
+            label_for_each_prior = labels[i][object_for_each_prior].clone()
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
@@ -880,7 +880,10 @@ class RefineDetLoss(nn.Module):
         # Eliminate easy background bboxes from ARM
         arm_scores_prob = F.softmax(arm_scores, dim=2)
         easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
+        # print(positive_priors.size(), easy_negative_idx.size())
+        # exit()
         # positive_priors[easy_negative_idx] = 0
+        positive_priors = positive_priors * ~easy_negative_idx
 
         # LOCALIZATION LOSS
         # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
