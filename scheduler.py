@@ -16,7 +16,7 @@ def adjust_learning_rate(optimizer, scale):
     print("DECAYING learning rate, the new LR is %f" % (optimizer.param_groups[1]['lr'],))
 
 
-def warm_up_learning_rate(optimizer, rate=4.):
+def warm_up_learning_rate(optimizer, rate=4.5):
     """
     Scale learning rate by a specified factor.
 

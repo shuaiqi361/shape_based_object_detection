@@ -5,7 +5,7 @@ from math import sqrt, log
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, focal_loss, SigmoidFocalLoss, SmoothL1Loss
+from operators.Loss import IouLoss, FocalLoss, SigmoidFocalLoss, SmoothL1Loss
 from metrics import find_jaccard_overlap
 from .utils import BasicBlock, Bottleneck
 
@@ -185,18 +185,35 @@ class RetinaNet(nn.Module):
         self.classificationModel = ClassificationModel(256, num_anchors=9, num_classes=n_classes)
 
         # parameters initialization
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        def initialize_layer(self, layer):
+                if isinstance(layer, nn.Conv2d):
+                    nn.init.normal_(layer.weight, std=0.01)
+                    if layer.bias is not None:
+                        nn.init.constant_(layer.bias, val=0)
 
-        self.classificationModel.output.weight.data.fill_(0)
-        self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
-        self.regressionModel.output.weight.data.fill_(0)
-        self.regressionModel.output.bias.data.fill_(0)
+        def initialize_prior(self, layer):
+            pi = 0.01
+            b = - math.log((1 - pi) / pi)
+            nn.init.constant_(layer.bias, b)
+            nn.init.normal_(layer.weight, std=0.01)
+
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         nn.init.normal_(m.weight, std=0.01)
+        #         if m.bias is not None:
+        #             nn.init.constant_(m.bias, val=0)
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+
+        self.classificationModel.apply(initialize_layer)
+        self.regressionModel.apply(initialize_layer)
+        self.classificationModel[-1].apply(initialize_prior)
+
+        # self.classificationModel.output.weight.data.normal_(0, 0.01)
+        # self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
+        # self.regressionModel.output.weight.data.fill_(0)
+        # self.regressionModel.output.bias.data.fill_(0)
 
         # self.freeze_bn()
 
@@ -314,9 +331,9 @@ class RetinaFocalLoss(nn.Module):
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
+        self.Focal_loss = FocalLoss()
         # self.Focal_loss = focal_loss
-        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        # self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
