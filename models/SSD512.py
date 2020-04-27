@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, FocalLoss, focal_loss
+from operators.Loss import IouLoss, FocalLoss, focal_loss, SmoothL1Loss
 from metrics import find_jaccard_overlap
 
 
@@ -161,9 +161,9 @@ class AuxiliaryConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight)
+                nn.init.normal_(c.weight, std=0.01)
                 if c.bias is not None:
-                    nn.init.normal_(c.bias)
+                    nn.init.constant_(c.bias, val=0)
 
     def forward(self, conv7_feats):
         """
@@ -222,8 +222,8 @@ class PredictionConvolutions(nn.Module):
                    'conv8_2': 6,
                    'conv9_2': 6,
                    'conv10_2': 6,
-                   'conv11_2': 6,
-                   'conv12_2': 6}
+                   'conv11_2': 8,
+                   'conv12_2': 8}
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
@@ -253,9 +253,9 @@ class PredictionConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight)
+                nn.init.normal_(c.weight, std=0.01)
                 if c.bias is not None:
-                    nn.init.normal_(c.bias)
+                    nn.init.constant_(c.bias, val=0)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats,
                 conv10_2_feats, conv11_2_feats, conv12_2_feats):
@@ -421,21 +421,21 @@ class SSD512(nn.Module):
                      'conv11_2': 2,
                      'conv12_2': 1}
 
-        obj_scales = {'conv4_3': 0.025,
-                      'conv7': 0.05,
-                      'conv8_2': 0.1,
-                      'conv9_2': 0.16,
-                      'conv10_2': 0.32,
-                      'conv11_2': 0.48,
-                      'conv12_2': 0.64}
+        obj_scales = {'conv4_3': 0.05,
+                      'conv7': 0.1,
+                      'conv8_2': 0.2,
+                      'conv9_2': 0.3,
+                      'conv10_2': 0.4,
+                      'conv11_2': 0.6,
+                      'conv12_2': 0.8}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1., 2., 0.5],
                          'conv8_2': [1., 2., 3., 0.5, .333],
                          'conv9_2': [1., 2., 3., 0.5, .333],
                          'conv10_2': [1., 2., 3., 0.5, .333],
-                         'conv11_2': [1., 2., 3., 0.5, .333],
-                         'conv12_2': [1., 2., 3., 0.5, .333]}
+                         'conv11_2': [1., 2., 3., 4., 0.5, .333, 0.25],
+                         'conv12_2': [1., 2., 3., 4., 0.5, .333, 0.25]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -486,7 +486,7 @@ class MultiBoxLoss512(nn.Module):
         self.n_classes = config.n_classes
         self.config = config
 
-        self.smooth_l1 = nn.L1Loss()
+        self.smooth_l1 = SmoothL1Loss  # nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
@@ -536,8 +536,8 @@ class MultiBoxLoss512(nn.Module):
 
             # To remedy this -
             # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-
+            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
             object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
 

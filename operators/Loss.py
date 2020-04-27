@@ -88,7 +88,7 @@ class FocalLoss(nn.Module):
         n_class = pred_logits.shape[1]
         class_ids = torch.arange(
             0, n_class, dtype=target.dtype, device=target.device
-        ).unsqueeze(0
+        ).unsqueeze(0)
         target = (targets == class_ids).long()
         pred = pred_logits.sigmoid()
         ce = F.binary_cross_entropy_with_logits(pred_logits, target, reduction='none')
