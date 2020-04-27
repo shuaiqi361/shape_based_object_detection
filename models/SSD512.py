@@ -536,7 +536,8 @@ class MultiBoxLoss512(nn.Module):
 
             # To remedy this -
             # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
 
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
             object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
