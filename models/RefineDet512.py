@@ -356,10 +356,10 @@ class ARMConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 9,
-                   'conv7': 15,
-                   'conv8_2': 15,
-                   'conv9_2': 15}
+        n_boxes = {'conv4_3': 6,
+                   'conv7': 6,
+                   'conv8_2': 6,
+                   'conv9_2': 6}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(self.feat_channels['conv4_3'], n_boxes['conv4_3'] * 4,
@@ -472,10 +472,10 @@ class ODMConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 9,
-                   'conv7': 15,
-                   'conv8_2': 15,
-                   'conv9_2': 15}
+        n_boxes = {'conv4_3': 6,
+                   'conv7': 6,
+                   'conv8_2': 6,
+                   'conv9_2': 6}
 
         self.feat_channels = {'conv4_3': 512,
                               'conv7': 1024,
@@ -633,7 +633,7 @@ class RefineDet512(nn.Module):
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
         raw_locs = self.offset2bbox(arm_locs, odm_locs)
         # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
-        prior_positive_idx = (arm_scores[:, :, 1] > self.theta).long()  # (batchsize, n_priors)
+        prior_positive_idx = (arm_scores[:, :, 1] > self.theta) # (batchsize, n_priors)
 
         return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_positive_idx
 
@@ -660,15 +660,16 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.07,
+        obj_scales = {'conv4_3': 0.064,
                       'conv7': 0.15,
                       'conv8_2': 0.3,
                       'conv9_2': 0.6}
-        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
-        aspect_ratios = {'conv4_3': [1., 2, 0.5],
-                         'conv7': [1., 2., 3., 0.5, .333],
-                         'conv8_2': [1., 2., 3., 0.5, 0.333],
-                         'conv9_2': [1., 2., 3., 0.5, 0.333]}
+        scale_factor = [1., 1.5]
+        # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        aspect_ratios = {'conv4_3': [1., 2., 0.5],
+                         'conv7': [1., 2., 0.5],
+                         'conv8_2': [1., 2., 0.5],
+                         'conv9_2': [1., 2., 0.5]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -753,8 +754,8 @@ class RefineDetLoss(nn.Module):
 
             # To remedy this -
             # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-
+            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
             object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
 
@@ -777,14 +778,14 @@ class RefineDetLoss(nn.Module):
 
         # Identify priors that are positive (non-background, binary)
         positive_priors = true_classes > 0
-
+        n_positives = positive_priors.sum(dim=1)  # (N)
         # LOCALIZATION LOSS
-        loc_loss = self.arm_loss(arm_locs[positive_priors].view(-1, 4), true_locs_encoded[positive_priors].view(-1, 4))
+        loc_loss = self.arm_loss(arm_locs[positive_priors].view(-1, 4),
+                                 true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
         # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())
-        n_positives = positive_priors.sum(dim=1)  # (N)
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
@@ -838,7 +839,7 @@ class RefineDetLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy)).clamp(0, 1)
+            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i].data.detach(), self.priors_cxcy))
             overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -850,8 +851,8 @@ class RefineDetLoss(nn.Module):
 
             # To remedy this -
             # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-
+            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
             object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
 
@@ -878,12 +879,12 @@ class RefineDetLoss(nn.Module):
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
         # Eliminate easy background bboxes from ARM
-        arm_scores_prob = F.softmax(arm_scores, dim=2)
-        easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
+        # arm_scores_prob = F.softmax(arm_scores, dim=2)
+        # easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
         # print(positive_priors.size(), easy_negative_idx.size())
         # exit()
         # positive_priors[easy_negative_idx] = 0
-        positive_priors = positive_priors * ~easy_negative_idx
+        # positive_priors = positive_priors * ~easy_negative_idx
 
         # LOCALIZATION LOSS
         # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
@@ -908,7 +909,7 @@ class RefineDetLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-        conf_loss_neg[easy_negative_idx] = 0.
+        # conf_loss_neg[easy_negative_idx] = 0.
         # print(conf_loss_neg.size(), conf_loss_neg[positive_priors, :].size(), conf_loss_neg[easy_negative_idx, :].size())
         # print(positive_priors.size(), easy_negative_idx.size())
         # exit()
