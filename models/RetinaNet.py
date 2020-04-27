@@ -5,7 +5,7 @@ from math import sqrt, log
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, focal_loss, SigmoidFocalLoss
+from operators.Loss import IouLoss, focal_loss, SigmoidFocalLoss, SmoothL1Loss
 from metrics import find_jaccard_overlap
 from .utils import BasicBlock, Bottleneck
 
@@ -198,7 +198,7 @@ class RetinaNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-        self.freeze_bn()
+        # self.freeze_bn()
 
     def create_anchors(self):
         """
@@ -311,7 +311,7 @@ class RetinaFocalLoss(nn.Module):
         self.n_classes = config.n_classes
         self.config = config
 
-        self.smooth_l1 = nn.L1Loss()
+        self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
@@ -362,8 +362,8 @@ class RetinaFocalLoss(nn.Module):
 
             # To remedy this -
             # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-
+            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
             object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
 

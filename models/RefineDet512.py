@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, focal_loss
+from operators.Loss import IouLoss, focal_loss, SmoothL1Loss
 from metrics import find_jaccard_overlap
 
 
@@ -712,8 +712,8 @@ class RefineDetLoss(nn.Module):
         self.config = config
         self.theta = theta
 
-        self.arm_loss = nn.L1Loss()
-        self.odm_loss = nn.L1Loss()
+        self.arm_loss = SmoothL1Loss(reduction='mean')
+        self.odm_loss = SmoothL1Loss(reduction='mean')
         # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = focal_loss
