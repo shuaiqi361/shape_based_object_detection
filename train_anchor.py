@@ -92,7 +92,7 @@ def main():
         start_epoch = 0
         model, criterion = model_entry(config)
         if args.finetune:
-            checkpoint = torch.load(args.load_path)
+            checkpoint = torch.load(args.load_path, map_location=config.device)
             init_model = checkpoint['model']
             reuse_layers = {}
             for param_tensor in init_model.state_dict().keys():
