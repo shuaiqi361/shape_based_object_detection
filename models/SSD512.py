@@ -421,13 +421,13 @@ class SSD512(nn.Module):
                      'conv11_2': 2,
                      'conv12_2': 1}
 
-        obj_scales = {'conv4_3': 0.05,
-                      'conv7': 0.1,
-                      'conv8_2': 0.2,
-                      'conv9_2': 0.3,
-                      'conv10_2': 0.4,
-                      'conv11_2': 0.6,
-                      'conv12_2': 0.8}
+        obj_scales = {'conv4_3': 0.04,
+                      'conv7': 0.08,
+                      'conv8_2': 0.16,
+                      'conv9_2': 0.32,
+                      'conv10_2': 0.48,
+                      'conv11_2': 0.64,
+                      'conv12_2': 0.9}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1., 2., 0.5],

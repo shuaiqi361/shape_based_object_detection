@@ -254,7 +254,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
-            warm_up_learning_rate(optimizer, rate=4.)
+            warm_up_learning_rate(optimizer, rate=config.optimizer['warm_up_rate'])
 
         data_time.update(time.time() - start)
 

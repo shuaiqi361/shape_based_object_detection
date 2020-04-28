@@ -331,9 +331,9 @@ class RetinaFocalLoss(nn.Module):
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.Focal_loss = FocalLoss()
+        # self.Focal_loss = FocalLoss()
         # self.Focal_loss = focal_loss
-        # self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
