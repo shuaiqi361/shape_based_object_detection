@@ -87,14 +87,16 @@ class FocalLoss(nn.Module):
     def forward(self, pred_logits, targets):  # target should be one-hot fashion
         n_class = pred_logits.shape[1]
         class_ids = torch.arange(
-            0, n_class, dtype=target.dtype, device=target.device
+            0, n_class, dtype=targets.dtype, device=targets.device
         ).unsqueeze(0)
-        target = (targets == class_ids).long()
-        pred = pred_logits.sigmoid()
+        target = (targets.unsqueeze(1) == class_ids).float()
+
+        pred = pred_logits.sigmoid().clamp(min=1e-5, max=1-1e-5)
         ce = F.binary_cross_entropy_with_logits(pred_logits, target, reduction='none')
         alpha = target * self.alpha + (1. - target) * (1. - self.alpha)
         pt = torch.where(target == 1,  pred, 1 - pred)
-        return alpha * (1. - pt) ** self.gamma * ce
+        focal = alpha * (1. - pt) ** self.gamma * ce
+        return focal.sum()
 
 
 # class FocalLoss(nn.Module):

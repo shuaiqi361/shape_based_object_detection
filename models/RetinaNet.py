@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from math import sqrt, log
-
+import math
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
@@ -185,13 +185,13 @@ class RetinaNet(nn.Module):
         self.classificationModel = ClassificationModel(256, num_anchors=9, num_classes=n_classes)
 
         # parameters initialization
-        def initialize_layer(self, layer):
+        def initialize_layer(layer):
                 if isinstance(layer, nn.Conv2d):
                     nn.init.normal_(layer.weight, std=0.01)
                     if layer.bias is not None:
                         nn.init.constant_(layer.bias, val=0)
 
-        def initialize_prior(self, layer):
+        def initialize_prior(layer):
             pi = 0.01
             b = - math.log((1 - pi) / pi)
             nn.init.constant_(layer.bias, b)
@@ -208,7 +208,7 @@ class RetinaNet(nn.Module):
 
         self.classificationModel.apply(initialize_layer)
         self.regressionModel.apply(initialize_layer)
-        self.classificationModel[-1].apply(initialize_prior)
+        self.classificationModel.output.apply(initialize_prior)
 
         # self.classificationModel.output.weight.data.normal_(0, 0.01)
         # self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
