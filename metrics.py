@@ -145,44 +145,111 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     return average_precisions, mean_average_precision
 
 
-def find_intersection(set_1, set_2):
+# def find_intersection(set_1, set_2):
+#     """
+#     Find the intersection of every box combination between two sets of boxes that are in boundary coordinates.
+#
+#     :param set_1: set 1, a tensor of dimensions (n1, 4)
+#     :param set_2: set 2, a tensor of dimensions (n2, 4)
+#     :return: intersection of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
+#     """
+#
+#     # PyTorch auto-broadcasts singleton dimensions
+#     lower_bounds = torch.max(set_1[:, :2].unsqueeze(1), set_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
+#     upper_bounds = torch.min(set_1[:, 2:].unsqueeze(1), set_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
+#     intersection_dims = torch.clamp(upper_bounds - lower_bounds, min=0)  # (n1, n2, 2)
+#
+#     return intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
+
+
+# def find_jaccard_overlap(set_1, set_2):
+#     """
+#     Find the Jaccard Overlap (IoU) of every box combination between two sets of boxes that are in boundary coordinates.
+#
+#     :param set_1: set 1, a tensor of dimensions (n1, 4)
+#     :param set_2: set 2, a tensor of dimensions (n2, 4)
+#     :return: Jaccard Overlap of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
+#     """
+#
+#     # Find intersections
+#     intersection = find_intersection(set_1, set_2)  # (n1, n2)
+#
+#     # Find areas of each box in both sets
+#     areas_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  # (n1)
+#     areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
+#
+#     # Find the union
+#     # PyTorch auto-broadcasts singleton dimensions
+#     union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
+#
+#     return intersection / union  # (n1, n2)
+
+def intersect(box_a, box_b):
+    """ We resize both tensors to [A,B,2] without new malloc:
+    [A,2] -> [A,1,2] -> [A,B,2]
+    [B,2] -> [1,B,2] -> [A,B,2]
+    Then we compute the area of intersect between box_a and box_b.
+    Args:
+      box_a: (tensor) bounding boxes, Shape: [A,4].
+      box_b: (tensor) bounding boxes, Shape: [B,4].
+    Return:
+      (tensor) intersection area, Shape: [A,B].
     """
-    Find the intersection of every box combination between two sets of boxes that are in boundary coordinates.
+    A = box_a.size(0)
+    B = box_b.size(0)
+    max_xy = torch.min(box_a[:, 2:].unsqueeze(1).expand(A, B, 2),
+                       box_b[:, 2:].unsqueeze(0).expand(A, B, 2))
+    min_xy = torch.max(box_a[:, :2].unsqueeze(1).expand(A, B, 2),
+                       box_b[:, :2].unsqueeze(0).expand(A, B, 2))
+    inter = torch.clamp((max_xy - min_xy), min=0)
+    return inter[:, :, 0] * inter[:, :, 1]
 
-    :param set_1: set 1, a tensor of dimensions (n1, 4)
-    :param set_2: set 2, a tensor of dimensions (n2, 4)
-    :return: intersection of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
+
+def find_jaccard_overlap(gt_boxes, anchors):
+    """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
+    is simply the intersection over union of two boxes.  Here we operate on
+    ground truth boxes and default boxes.
+    E.g.:
+        A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
+    Args:
+        gt_boxes: (tensor) Ground truth bounding boxes, Shape: [num_objects,4]
+        anchors: (tensor) Prior boxes from anchorbox layers, Shape: [num_anchors,4]
+    Return:
+        jaccard overlap: (tensor) Shape: [gt_boxes.size(0), anchors.size(0)]
     """
+    # pdb.set_trace()
+    k = gt_boxes.size(0)
+    n = anchors.size(0)
+    # expand dims (k, n, 4)
+    ex_gt_boxes = gt_boxes.view(k, 1, 4).expand(k, n, 4)
+    ex_anchors = anchors.view(1, n, 4).expand(k, n, 4)
+    iw = (torch.min(ex_gt_boxes[:, :, 2], ex_anchors[:, :, 2]) -
+          torch.max(ex_gt_boxes[:, :, 0], ex_anchors[:, :, 0]))
+    iw[iw < 0] = 0
+    ih = (torch.min(ex_gt_boxes[:, :, 3], ex_anchors[:, :, 3]) -
+          torch.max(ex_gt_boxes[:, :, 1], ex_anchors[:, :, 1]))
+    ih[ih < 0] = 0
 
-    # PyTorch auto-broadcasts singleton dimensions
-    lower_bounds = torch.max(set_1[:, :2].unsqueeze(1), set_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
-    upper_bounds = torch.min(set_1[:, 2:].unsqueeze(1), set_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
-    intersection_dims = torch.clamp(upper_bounds - lower_bounds, min=0)  # (n1, n2, 2)
+    EPS = 1e-5
+    gt_boxes_x = ex_gt_boxes[:, :, 2] - ex_gt_boxes[:, :, 0]
+    gt_boxes_y = ex_gt_boxes[:, :, 3] - ex_gt_boxes[:, :, 1]
+    # [k, n]
+    gt_boxes_area = gt_boxes_x * gt_boxes_y
+    # zero gts.
+    gt_boxes_zero = (torch.abs(gt_boxes_x) < EPS) & (torch.abs(gt_boxes_y) < EPS)
+    anchors_x = ex_anchors[:, :, 2] - ex_anchors[:, :, 0]
+    anchors_y = ex_anchors[:, :, 3] - ex_anchors[:, :, 1]
+    # [num_gts, num_anchors]
+    anchors_area = anchors_x * anchors_y
+    # anchors_zero = (torch.abs(anchors_x) < EPS) & (torch.abs(anchors_y) < EPS)
+    anchors_zero = (anchors_x < EPS) & (anchors_y < EPS)
+    inner = iw * ih
+    overlaps = inner / (gt_boxes_area + anchors_area - inner + EPS)
 
-    return intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
+    overlaps.masked_fill_(gt_boxes_zero, 0)
+    overlaps.masked_fill_(anchors_zero, -1)
 
-
-def find_jaccard_overlap(set_1, set_2):
-    """
-    Find the Jaccard Overlap (IoU) of every box combination between two sets of boxes that are in boundary coordinates.
-
-    :param set_1: set 1, a tensor of dimensions (n1, 4)
-    :param set_2: set 2, a tensor of dimensions (n2, 4)
-    :return: Jaccard Overlap of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
-    """
-
-    # Find intersections
-    intersection = find_intersection(set_1, set_2)  # (n1, n2)
-
-    # Find areas of each box in both sets
-    areas_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  # (n1)
-    areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
-
-    # Find the union
-    # PyTorch auto-broadcasts singleton dimensions
-    union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
-
-    return intersection / union  # (n1, n2)
+    return overlaps
 
 
 def accuracy(scores, targets, k):

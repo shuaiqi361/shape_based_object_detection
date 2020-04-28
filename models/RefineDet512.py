@@ -505,7 +505,7 @@ class ODMConvolutions(nn.Module):
             if isinstance(c, nn.Conv2d):
                 nn.init.xavier_normal_(c.weight)
                 if c.bias is not None:
-                    nn.init.normal_(c.bias)
+                    nn.init.constant_(c.bias, 0)
 
     def forward(self, conv4_3_tcb, conv7_tcb, conv8_2_tcb, conv9_2_tcb):
         """
@@ -660,10 +660,10 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.064,
-                      'conv7': 0.15,
-                      'conv8_2': 0.3,
-                      'conv9_2': 0.6}
+        obj_scales = {'conv4_3': 0.0625,
+                      'conv7': 0.125,
+                      'conv8_2': 0.25,
+                      'conv9_2': 0.5}
         scale_factor = [1., 1.5]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'conv4_3': [1., 2., 0.5],
