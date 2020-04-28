@@ -91,7 +91,7 @@ class FocalLoss(nn.Module):
         ).unsqueeze(0)
         target = (targets.unsqueeze(1) == class_ids).float()
 
-        pred = pred_logits.sigmoid().clamp(min=1e-5, max=1-1e-5)
+        pred = pred_logits.sigmoid().clamp(min=1e-4, max=1-1e-4)
         ce = F.binary_cross_entropy_with_logits(pred_logits, target, reduction='none')
         alpha = target * self.alpha + (1. - target) * (1. - self.alpha)
         pt = torch.where(target == 1,  pred, 1 - pred)
