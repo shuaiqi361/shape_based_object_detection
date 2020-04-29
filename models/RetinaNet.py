@@ -187,7 +187,7 @@ class RetinaNet(nn.Module):
         # parameters initialization
         def initialize_layer(layer):
                 if isinstance(layer, nn.Conv2d):
-                    nn.init.normal_(layer.weight, std=0.01)
+                    nn.init.xavier_normal_(layer.weight)
                     if layer.bias is not None:
                         nn.init.constant_(layer.bias, val=0)
 
@@ -197,22 +197,22 @@ class RetinaNet(nn.Module):
             nn.init.constant_(layer.bias, b)
             nn.init.normal_(layer.weight, std=0.01)
 
-        # for m in self.modules():
-        #     if isinstance(m, nn.Conv2d):
-        #         nn.init.normal_(m.weight, std=0.01)
-        #         if m.bias is not None:
-        #             nn.init.constant_(m.bias, val=0)
-        #     elif isinstance(m, nn.BatchNorm2d):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, val=0)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
-        self.classificationModel.apply(initialize_layer)
-        self.regressionModel.apply(initialize_layer)
-        self.classificationModel.output.apply(initialize_prior)
+        # self.classificationModel.apply(initialize_layer)
+        # self.regressionModel.apply(initialize_layer)
+        # self.classificationModel.output.apply(initialize_prior)
 
-        # self.classificationModel.output.weight.data.normal_(0, 0.01)
-        # self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
-        # self.regressionModel.output.weight.data.fill_(0)
+        nn.init.normal_(self.classificationModel.output.weight, std=0.01)
+        self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
+        # nn.init.normal_(self.regressionModel.output.weight, std=0.01)
         # self.regressionModel.output.bias.data.fill_(0)
 
         # self.freeze_bn()
@@ -460,7 +460,7 @@ class RetinaFocalLoss(nn.Module):
             conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss
+        return 1.5 * conf_loss + self.alpha * loc_loss
 
 
 def resnet50(num_classes, config, pretrained=True, **kwargs):
