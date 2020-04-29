@@ -660,10 +660,10 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.0625,
-                      'conv7': 0.125,
-                      'conv8_2': 0.25,
-                      'conv9_2': 0.5}
+        obj_scales = {'conv4_3': 0.08,
+                      'conv7': 0.16,
+                      'conv8_2': 0.32,
+                      'conv9_2': 0.64}
         scale_factor = [1., 1.5]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'conv4_3': [1., 2., 0.5],
@@ -839,8 +839,10 @@ class RefineDetLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i].data.detach(), self.priors_cxcy))
-            overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
+            # decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i].data.detach(), self.priors_cxcy))
+            # overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
+
+            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
             overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (22536)
@@ -871,8 +873,10 @@ class RefineDetLoss(nn.Module):
             true_classes[i] = label_for_each_prior
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
+            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
+            #                                       xy_to_cxcy(decoded_arm_locs[i]))
             true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
-                                                  xy_to_cxcy(decoded_arm_locs[i]))
+                                                  self.priors_cxcy)
             # true_locs[i] = boxes[i][object_for_each_prior]
             # decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
 
@@ -936,8 +940,9 @@ class RefineDetLoss(nn.Module):
         :param labels:
         :return:
         """
-        arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
+        # arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
         odm_loss = self.compute_odm_loss(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + odm_loss
+        # return arm_loss + odm_loss
+        return odm_loss

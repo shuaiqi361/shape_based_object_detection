@@ -317,7 +317,7 @@ def evaluate(test_loader, model, optimizer, config):
                            min_score=config.nms['min_score'],
                            max_overlap=config.nms['max_overlap'],
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                           config=config, prior_positives_idx=prior_positives_idx)
+                           config=config, prior_positives_idx=None)
             else:
                 raise NotImplementedError
 
