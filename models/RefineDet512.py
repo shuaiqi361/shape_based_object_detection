@@ -218,7 +218,7 @@ class TCBConvolutions(nn.Module):
         :param conv9_2_feats: conv8_2 feature map, a tensor of dimensions (N, 512, 8, 8)
         :return: 16320 locations and class scores (i.e. w.r.t each prior box) for each image
         """
-        batch_size = conv4_3_feats.size(0)
+        # batch_size = conv4_3_feats.size(0)
 
         # # Predict localization boxes' bounds (as offsets w.r.t prior-boxes)
         l_conv4_3 = self.tcb_conv4_3(conv4_3_feats, conv7_feats)  # (N, 256, 64, 64)
@@ -356,10 +356,10 @@ class ARMConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 6,
-                   'conv7': 6,
-                   'conv8_2': 6,
-                   'conv9_2': 6}
+        n_boxes = {'conv4_3': 3,
+                   'conv7': 3,
+                   'conv8_2': 3,
+                   'conv9_2': 3}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(self.feat_channels['conv4_3'], n_boxes['conv4_3'] * 4,
@@ -472,10 +472,10 @@ class ODMConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 6,
-                   'conv7': 6,
-                   'conv8_2': 6,
-                   'conv9_2': 6}
+        n_boxes = {'conv4_3': 3,
+                   'conv7': 3,
+                   'conv8_2': 3,
+                   'conv9_2': 3}
 
         self.feat_channels = {'conv4_3': 512,
                               'conv7': 1024,
@@ -594,6 +594,7 @@ class RefineDet512(nn.Module):
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
+        torch.cuda.empty_cache()
 
     def disable_parameter_requires_grad(self, m):
         for param in m.parameters():
@@ -660,11 +661,11 @@ class RefineDet512(nn.Module):
                      'conv8_2': 16,
                      'conv9_2': 8}
 
-        obj_scales = {'conv4_3': 0.08,
-                      'conv7': 0.16,
-                      'conv8_2': 0.32,
-                      'conv9_2': 0.64}
-        scale_factor = [1., 1.5]
+        obj_scales = {'conv4_3': 0.0625,
+                      'conv7': 0.125,
+                      'conv8_2': 0.25,
+                      'conv9_2': 0.5}
+        scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'conv4_3': [1., 2., 0.5],
                          'conv7': [1., 2., 0.5],
@@ -831,7 +832,7 @@ class RefineDetLoss(nn.Module):
 
         # Calculate ARM loss: offset smoothl1 + binary classification loss
         decoded_arm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
@@ -839,10 +840,10 @@ class RefineDetLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            # decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i].data.detach(), self.priors_cxcy))
-            # overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
+            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy))
+            overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
 
-            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
+            # overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
             overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (22536)
@@ -873,22 +874,21 @@ class RefineDetLoss(nn.Module):
             true_classes[i] = label_for_each_prior
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
-            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
-            #                                       xy_to_cxcy(decoded_arm_locs[i]))
             true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
-                                                  self.priors_cxcy)
+                                                  xy_to_cxcy(decoded_arm_locs[i]))
+            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
             # true_locs[i] = boxes[i][object_for_each_prior]
             # decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
         # Eliminate easy background bboxes from ARM
-        # arm_scores_prob = F.softmax(arm_scores, dim=2)
-        # easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
+        arm_scores_prob = F.softmax(arm_scores, dim=2)
+        easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
         # print(positive_priors.size(), easy_negative_idx.size())
         # exit()
         # positive_priors[easy_negative_idx] = 0
-        # positive_priors = positive_priors * ~easy_negative_idx
+        positive_priors = positive_priors & ~easy_negative_idx
 
         # LOCALIZATION LOSS
         # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
@@ -940,9 +940,9 @@ class RefineDetLoss(nn.Module):
         :param labels:
         :return:
         """
-        # arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels)
+        arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(arm_locs.data.detach(), arm_scores.data.detach(), odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        # return arm_loss + odm_loss
-        return odm_loss
+        return arm_loss + odm_loss
+        # return odm_loss
