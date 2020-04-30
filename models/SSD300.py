@@ -516,10 +516,11 @@ class MultiBoxLoss300(nn.Module):
             prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
 
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
+            if len(prior_for_each_object) > 0:
+                overlap_for_each_prior.index_fill_(0, prior_for_each_object, 1.0)
 
-            # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
-            overlap_for_each_prior[prior_for_each_object] = 1.
+            for j in range(prior_for_each_object.size(0)):
+                object_for_each_prior[prior_for_each_object[j]] = j
 
             # Labels for each prior
             label_for_each_prior = labels[i][object_for_each_prior]
@@ -579,7 +580,7 @@ class MultiBoxLoss300(nn.Module):
             conf_loss_neg = conf_loss_all[negative_priors]
             # print(positive_priors.size(), negative_priors.size(), conf_loss_pos.size(), conf_loss_neg.size())
             # conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-            conf_loss_neg, _ = conf_loss_neg.sort(dim=0, descending=True)  # (N, 8732), sorted by decreasing hardness
+            conf_loss_neg, _ = conf_loss_neg.sort(dim=-1, descending=True)  # (N, 8732), sorted by decreasing hardness
             # hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
             #     self.device)  # (N, 8732)
             # hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)

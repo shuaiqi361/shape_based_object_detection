@@ -149,9 +149,9 @@ class AuxiliaryConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight)
+                nn.init.xavier_normal_(c.weight.data)
                 if c.bias is not None:
-                    nn.init.normal_(c.bias)
+                    nn.init.constant_(c.bias.data, 0)
 
     def forward(self, conv7_feats):
         """
@@ -266,8 +266,9 @@ class TCB(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -318,8 +319,9 @@ class TCBTail(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -394,9 +396,9 @@ class ARMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight)
+                nn.init.xavier_normal_(c.weight.data)
                 if c.bias is not None:
-                    nn.init.normal_(c.bias)
+                    nn.init.constant_(c.bias, 0)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats):
         """
@@ -503,9 +505,9 @@ class ODMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight)
+                nn.init.xavier_normal_(c.weight.data)
                 if c.bias is not None:
-                    nn.init.constant_(c.bias, 0)
+                    nn.init.constant_(c.bias.data, 0)
 
     def forward(self, conv4_3_tcb, conv7_tcb, conv8_2_tcb, conv9_2_tcb):
         """
@@ -594,7 +596,7 @@ class RefineDet512(nn.Module):
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
     def disable_parameter_requires_grad(self, m):
         for param in m.parameters():
@@ -632,9 +634,9 @@ class RefineDet512(nn.Module):
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
-        raw_locs = self.offset2bbox(arm_locs, odm_locs)
+        raw_locs = self.offset2bbox(arm_locs.data.detach(), odm_locs.data.detach())
         # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
-        prior_positive_idx = (arm_scores[:, :, 1] > self.theta) # (batchsize, n_priors)
+        prior_positive_idx = (arm_scores[:, :, 1] > self.theta)  # (batchsize, n_priors)
 
         return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_positive_idx
 
@@ -758,13 +760,18 @@ class RefineDetLoss(nn.Module):
             overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
             prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
+            # object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
+            if len(prior_for_each_object) > 0:
+                overlap_for_each_prior.index_fill_(0, prior_for_each_object, 1.0)
+
+            for j in range(prior_for_each_object.size(0)):
+                object_for_each_prior[prior_for_each_object[j]] = j
 
             # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
-            overlap_for_each_prior[prior_for_each_object] = 1.
+            # overlap_for_each_prior[prior_for_each_object] = 1.
 
             # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior].clone()
+            label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
@@ -800,7 +807,7 @@ class RefineDetLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=0,
+        conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
         hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
             self.device)  # (N, 8732)
@@ -857,13 +864,14 @@ class RefineDetLoss(nn.Module):
             overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
             prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
             # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
+            if len(prior_for_each_object) > 0:
+                overlap_for_each_prior.index_fill_(0, prior_for_each_object, 1.0)
 
-            # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
-            overlap_for_each_prior[prior_for_each_object] = 1.
+            for j in range(prior_for_each_object.size(0)):
+                object_for_each_prior[prior_for_each_object[j]] = j
 
             # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior].clone()
+            label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
@@ -913,12 +921,12 @@ class RefineDetLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-        # conf_loss_neg[easy_negative_idx] = 0.
+        conf_loss_neg[easy_negative_idx] = 0.
         # print(conf_loss_neg.size(), conf_loss_neg[positive_priors, :].size(), conf_loss_neg[easy_negative_idx, :].size())
         # print(positive_priors.size(), easy_negative_idx.size())
         # exit()
 
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=0,
+        conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
         hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
             self.device)  # (N, 8732)
@@ -941,8 +949,8 @@ class RefineDetLoss(nn.Module):
         :return:
         """
         arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs.data.detach(), arm_scores.data.detach(), odm_locs, odm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(arm_locs.data.detach(), arm_scores.data.detach(), odm_locs, odm_scores, boxes,
+                                         labels)
 
         # TOTAL LOSS
         return arm_loss + odm_loss
-        # return odm_loss
