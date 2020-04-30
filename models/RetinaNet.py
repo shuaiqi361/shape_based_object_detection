@@ -185,23 +185,22 @@ class RetinaNet(nn.Module):
         self.classificationModel = ClassificationModel(256, num_anchors=9, num_classes=n_classes)
 
         # parameters initialization
-        def initialize_layer(layer):
-                if isinstance(layer, nn.Conv2d):
-                    nn.init.xavier_normal_(layer.weight)
-                    if layer.bias is not None:
-                        nn.init.constant_(layer.bias, val=0)
-
-        def initialize_prior(layer):
-            pi = 0.01
-            b = - math.log((1 - pi) / pi)
-            nn.init.constant_(layer.bias, b)
-            nn.init.normal_(layer.weight, std=0.01)
+        # def initialize_layer(layer):
+        #         if isinstance(layer, nn.Conv2d):
+        #             nn.init.xavier_normal_(layer.weight)
+        #             if layer.bias is not None:
+        #                 nn.init.constant_(layer.bias, val=0)
+        #
+        # def initialize_prior(layer):
+        #     pi = 0.01
+        #     b = - math.log((1 - pi) / pi)
+        #     nn.init.constant_(layer.bias, b)
+        #     nn.init.normal_(layer.weight, std=0.01)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.normal_(m.weight, std=0.01)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, val=0)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -210,10 +209,16 @@ class RetinaNet(nn.Module):
         # self.regressionModel.apply(initialize_layer)
         # self.classificationModel.output.apply(initialize_prior)
 
-        nn.init.normal_(self.classificationModel.output.weight, std=0.01)
-        self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
+        # nn.init.normal_(self.classificationModel.output.weight, std=0.01)
+        # self.classificationModel.output.bias.data.fill_(-log((1.0 - self.prior) / self.prior))
         # nn.init.normal_(self.regressionModel.output.weight, std=0.01)
         # self.regressionModel.output.bias.data.fill_(0)
+
+        self.classificationModel.output.weight.data.fill_(0)
+        self.classificationModel.output.bias.data.fill_(-math.log((1.0 -self. prior) / self.prior))
+
+        self.regressionModel.output.weight.data.fill_(0)
+        self.regressionModel.output.bias.data.fill_(0)
 
         # self.freeze_bn()
 

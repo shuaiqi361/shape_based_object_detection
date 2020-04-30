@@ -206,7 +206,7 @@ class FCOS(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-        self.freeze_bn()
+        # self.freeze_bn()
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
