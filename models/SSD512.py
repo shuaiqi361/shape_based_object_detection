@@ -427,7 +427,7 @@ class SSD512(nn.Module):
                       'conv9_2': 0.32,
                       'conv10_2': 0.48,
                       'conv11_2': 0.64,
-                      'conv12_2': 0.9}
+                      'conv12_2': 0.8}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1., 2., 0.5],
@@ -600,16 +600,17 @@ class MultiBoxLoss512(nn.Module):
 
             # Next, find which priors are hard-negative
             # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-            # conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-            conf_loss_neg = conf_loss_all[negative_priors]
+            conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
+            # conf_loss_neg = conf_loss_all[negative_priors]
             # print(positive_priors.size(), negative_priors.size(), conf_loss_pos.size(), conf_loss_neg.size())
-            # conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+            conf_loss_neg[~negative_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+            # conf_loss_neg[positive_priors] = 0.
             conf_loss_neg, _ = conf_loss_neg.sort(dim=-1, descending=True)  # (N, 8732), sorted by decreasing hardness
-            # hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-            #     self.device)  # (N, 8732)
-            # hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
-            # conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
-            conf_loss_hard_neg = conf_loss_neg[:n_hard_negatives.sum().long()]
+            hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
+                self.device)  # (N, 8732)
+            hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
+            conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+            # conf_loss_hard_neg = conf_loss_neg[:n_hard_negatives.sum().long()]
 
             # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
             conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
