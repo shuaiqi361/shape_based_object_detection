@@ -527,4 +527,5 @@ def diounms(boxes, scores, overlap=0.5, top_k=200, beta1=1.0):
         # keep only elements with an IoU <= overlap
         idx = idx[IoU.le(overlap)]
 
+    keep = keep[:count]
     return keep, count

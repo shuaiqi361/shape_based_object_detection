@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import json
 import os
 from PIL import Image
-from .transforms import transform
+from .transforms import transform, transform_richer
 
 
 class PascalVOCDataset(Dataset):
@@ -46,9 +46,9 @@ class PascalVOCDataset(Dataset):
         ids = self.images[i]
 
         # Apply transformations
-        image, boxes, labels, = transform(image, boxes, labels,
-                                          split=self.split, resize_dim=self.input_size,
-                                          config=self.config)
+        image, boxes, labels, = transform_richer(image, boxes, labels,
+                                                 split=self.split,
+                                                 config=self.config)
 
         return image, boxes, labels, ids, difficulties
 
@@ -81,7 +81,7 @@ class PascalVOCDataset(Dataset):
             ids.append(b[3])
             difficulties.append(b[4])
 
-        images = torch.stack(images, dim=0)
+        # images = torch.stack(images, dim=0)
 
         return images, boxes, labels, ids, difficulties
 
@@ -125,9 +125,9 @@ class COCO17Dataset(Dataset):
         difficulties = torch.LongTensor(objects['difficulties'])  # (n_objects)
 
         # Apply transformations
-        image, boxes, labels = transform(image, boxes, labels,
-                                         split=self.split, resize_dim=self.input_size,
-                                         config=self.config)
+        image, boxes, labels = transform_richer(image, boxes, labels,
+                                                split=self.split,
+                                                config=self.config)
         return image, boxes, labels, ids, difficulties
 
     def __len__(self):
@@ -159,7 +159,7 @@ class COCO17Dataset(Dataset):
             ids.append(b[3])
             difficulties.append(b[4])
 
-        images = torch.stack(images, dim=0)
+        # images = torch.stack(images, dim=0)
 
         return images, boxes, labels, ids, difficulties
 

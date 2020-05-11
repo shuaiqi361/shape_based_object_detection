@@ -2,6 +2,8 @@ import torch
 import random
 import torchvision.transforms.functional as FT
 from metrics import find_jaccard_overlap
+import numpy as np
+from PIL import Image
 
 
 def decimate(tensor, m):
@@ -338,6 +340,7 @@ def transform(image, boxes, labels, split, resize_dim, config):
     assert split in {'TRAIN', 'TEST', 'VAL'}
     operation_list = config.model['operation_list']
     return_percent_coords = config.model['return_percent_coords']
+    resize_dims_list = config.model['input_size']
 
     # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
     # see: https://pytorch.org/docs/stable/torchvision/models.html
@@ -381,3 +384,210 @@ def transform(image, boxes, labels, split, resize_dim, config):
     new_image = FT.normalize(new_image, mean=mean, std=std)
 
     return new_image, new_boxes, new_labels
+
+
+def transform_richer(image, boxes, labels, split, config):
+    """
+    Apply the transformations above.
+
+    :param config:
+    :param operation_list:
+    :param resize_dim:
+    :param resize: resize training images
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param labels: labels of objects, a tensor of dimensions (n_objects)
+    :param difficulties: difficulties of detection of these objects, a tensor of dimensions (n_objects)
+    :param split: one of 'TRAIN' or 'TEST', since different sets of transformations are applied
+    :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
+    """
+    assert split in {'TRAIN', 'TEST', 'VAL'}
+    operation_list = config.model['operation_list']
+    return_percent_coords = config.model['return_percent_coords']
+
+    # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
+    # see: https://pytorch.org/docs/stable/torchvision/models.html
+    # mean = [0.485, 0.456, 0.406]
+    # std = [0.229, 0.224, 0.225]
+    mean = config.model['mean']
+    std = config.model['std']
+
+    input_sizes = config.model['input_size']
+    test_size = config.model['test_size']
+    resize_dim = (test_size, test_size)
+
+    new_image = image
+    new_boxes = boxes
+    new_labels = labels
+
+    # Skip the following operations for evaluation/testing
+    if split == 'TRAIN':
+        # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
+        new_image = photometric_distort(new_image)
+
+        # # Convert PIL image to Torch tensor
+        # new_image = FT.to_tensor(new_image)
+        #
+        # # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
+        # # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+        # if random.random() < 0.5 and 'expand' in operation_list:
+        #     new_image, new_boxes = expand(new_image, boxes, filler=mean)
+        #
+        # # Randomly crop image (zoom in)
+        # if random.random() < 0.5 and 'random_crop' in operation_list:
+        #     new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
+        #
+        # # Convert Torch tensor to PIL image
+        # new_image = FT.to_pil_image(new_image)
+        # Flip image with a 50% chance
+        if random.random() < 0.5:
+            new_image, new_boxes = flip(new_image, new_boxes)
+
+        return new_image, new_boxes, new_labels
+
+    # Resize image
+    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
+
+    # Convert PIL image to Torch tensor
+    new_image = FT.to_tensor(new_image)
+
+    # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
+    new_image = FT.normalize(new_image, mean=mean, std=std)
+
+    return new_image, new_boxes, new_labels
+
+
+def bof_augment(images, boxes, labels, config):
+    operation_list = config.model['operation_list']
+    assert len(labels) == 4  # hard code 4 images per batch, return 2 images
+    new_images = list()
+    new_labels = list()
+    new_boxes = list()
+    resize_dims = config.model['input_size']
+    resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
+
+    if 'mixup' in operation_list and random.random() < 0.5:
+        temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
+        temp_image = FT.to_pil_image(temp_image)
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+
+        # fill the background with no mixup with mean pixels
+        temp_image[temp_image == 0] = torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)
+
+        new_images.append(temp_image)
+        new_boxes.append(temp_boxes)
+        new_labels.append(temp_labels)
+    else:
+        temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_labels.append(labels[0])
+        new_boxes.append(temp_boxes)
+
+    if 'mosaic' in operation_list and random.random() < 0.5:
+        temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_boxes.append(temp_boxes)
+        new_labels.append(temp_labels)
+    else:
+        temp_image, temp_boxes = resize(images[2], boxes[2], dims=(resize_dim, resize_dim),
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_labels.append(labels[2])
+        new_boxes.append(temp_boxes)
+
+    return new_images, new_boxes, new_labels
+
+
+def mosaic_image(images, boxes, labels):
+    assert len(labels) == 4  # currently only support mosaic 4 images
+    new_image = Image.new('RGB', (512 * 2, 512 * 2))
+    new_labels = list()
+    new_boxes = list()
+
+    for i in range(len(labels)):
+        temp_image = images[i]
+        temp_boxes = boxes[i]
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(512, 512), return_percent_coords=False)
+        new_image.paste(temp_image, 512 * (i // 2, i % 2))
+        new_labels.append(labels[i])
+        temp_boxes[:, 0] += 512 * (i % 2)
+        temp_boxes[:, 1] += 512 * (i // 2)
+        temp_boxes[:, 2] += 512 * (i % 2)
+        temp_boxes[:, 3] += 512 * (i // 2)
+        new_boxes.append(temp_boxes)
+
+    return new_image, new_boxes, new_labels
+
+
+
+
+def mixup_image(images, boxes, labels, beta=1.5):
+    assert len(labels) == 2  # currently only support mix 2 images up
+    image1 = FT.to_tensor(images[0])
+    image2 = FT.to_tensor(images[1])
+    _, height1, width1 = image1.size()
+    _, height2, width2 = image2.size()
+
+    new_width = max(width1, width2)
+    new_height = max(height1, height2)
+    new_image = torch.zeros((3, new_height, new_width))
+
+    lam = np.random.beta(beta, beta)
+
+    if new_height > height1:  # sample where to put the image1
+        start_idx_h = np.random.randint(0, new_height - height1)
+        if new_width > width1:
+            start_idx_w = np.random.randint(0, new_width - width1)
+            new_image[:, start_idx_h:start_idx_h + height1, start_idx_w:start_idx_w + width1] += image1 * lam
+            boxes[0][0] += start_idx_w
+            boxes[0][1] += start_idx_h
+            boxes[0][2] += start_idx_w
+            boxes[0][3] += start_idx_h
+        else:
+            new_image[:, start_idx_h:start_idx_h + height1, :] += image1 * lam
+            boxes[0][1] += start_idx_h
+            boxes[0][3] += start_idx_h
+    else:
+        if new_width > width1:
+            start_idx_w = np.random.randint(0, new_width - width1)
+            new_image[:, :, start_idx_w:start_idx_w + width1] += image1 * lam
+            boxes[0][0] += start_idx_w
+            boxes[0][2] += start_idx_w
+        else:
+            new_image += image1 * lam
+
+    if new_height > height2:  # sample where to put the image2
+        start_idx_h = np.random.randint(0, new_height - height2)
+        if new_width > width2:
+            start_idx_w = np.random.randint(0, new_width - width2)
+            new_image[:, start_idx_h:start_idx_h + height2, start_idx_w:start_idx_w + width2] += image2 * (1 - lam)
+            boxes[1][0] += start_idx_w
+            boxes[1][1] += start_idx_h
+            boxes[1][2] += start_idx_w
+            boxes[1][3] += start_idx_h
+        else:
+            new_image[:, start_idx_h:start_idx_h + height2, :] += image2 * (1 - lam)
+            boxes[1][1] += start_idx_h
+            boxes[1][3] += start_idx_h
+    else:
+        if new_width > width2:
+            start_idx_w = np.random.randint(0, new_width - width2)
+            new_image[:, :, start_idx_w:start_idx_w + width2] += image2 * (1 - lam)
+            boxes[1][0] += start_idx_w
+            boxes[1][2] += start_idx_w
+        else:
+            new_image += image2 * (1 - lam)
+
+    return new_image, boxes[0].append(boxes[1]), labels[0].append(labels[1])
