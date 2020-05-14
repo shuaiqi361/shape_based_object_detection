@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from dataset.transforms import *
-import torch.nn.functional as F
+from operators.iou_utils import diounms
 from torchvision.ops import nms
 
 
@@ -196,7 +196,7 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     device = config.device
     focal_type = config['focal_type']
     batch_size = predicted_locs.size(0)
-    n_priors = priors_cxcy.size(0)
+    # n_priors = priors_cxcy.size(0)
     n_classes = predicted_scores.size(2)
     # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
 
@@ -262,7 +262,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
             class_decoded_locs = torch.index_select(decoded_locs_all, dim=0,
                                                     index=torch.nonzero(score_above_min_score).squeeze(dim=1))
 
-            anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
+            # anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
+            anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
 
             # Store only unsuppressed boxes for this class
             # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),

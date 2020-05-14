@@ -4,7 +4,7 @@ import models.functional as Func
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, SmoothL1Loss, SigmoidFocalLoss
+from operators.Loss import IouLoss, SmoothL1Loss, SigmoidFocalLoss, LabelSmoothingLoss
 from metrics import find_jaccard_overlap
 
 
@@ -398,7 +398,7 @@ class SSD300GCN(nn.Module):
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
         self.pred_convs = PredictionConvolutions(n_classes, config, n_points=9, node_dim=16)
-        self.shape_weight = nn.Parameter(data=torch.ones(1) * 0.5, requires_grad=True)
+        self.shape_weight = nn.Parameter(data=torch.ones(1, 1, 4) * 0.5, requires_grad=True)
 
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
@@ -437,6 +437,7 @@ class SSD300GCN(nn.Module):
         for i in range(bbox_from_reg.size(0)):
             bbox_from_reg[i] = cxcy_to_xy(gcxgcy_to_cxcy(locs[i], self.priors_cxcy))
 
+        # leverage the prediction on both predicted offsets and shapes
         final_bbox = bbox_from_shape * self.shape_weight.detach() + bbox_from_reg * (1 - self.shape_weight)
 
         return final_bbox, classes_scores, predicted_points
@@ -541,6 +542,7 @@ class MultiBoxGCNLoss300(nn.Module):
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=.25, config=config)
+        self.SoftCE = LabelSmoothingLoss(classes=self.n_classes, smoothing=config.smooth_threshold, reduce=False)
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
@@ -606,7 +608,7 @@ class MultiBoxGCNLoss300(nn.Module):
         # LOCALIZATION LOSS
         loc_loss = self.Diou_loss(predicted_locs[positive_priors].view(-1, 4),
                                       predicted_locs[positive_priors].view(-1, 4))
-        # if self.config.reg_loss.upper() == 'DIOU':
+        # if self.config.reg_loss.upper() == 'IOU':
         #     loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4),
         #                               true_locs[positive_priors].view(-1, 4))
         # else:

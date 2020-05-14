@@ -189,6 +189,7 @@ def main():
 
     # Epochs
     best_mAP = -1.
+    config.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, config.optimizer['min_lr'])
 
     for epoch in range(start_epoch, epochs):
         # Decay learning rate at particular epochs
@@ -207,6 +208,8 @@ def main():
               criterion=criterion,
               optimizer=optimizer,
               epoch=epoch, config=config)
+
+        config.scheduler.step()
 
         # Save checkpoint
         if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
@@ -381,7 +384,9 @@ def evaluate(test_loader, model, optimizer, config):
     # # added to resume training
     # model.train()
 
-    str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
+    str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
+                'avg speed {1:.2f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
+                                                          config.scheduler._get_closed_form_lr()[0])
     config.logger.info(str_print)
 
     del predicted_locs, predicted_scores, boxes, labels, difficulties
