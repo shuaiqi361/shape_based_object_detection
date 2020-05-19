@@ -1,4 +1,5 @@
 from torch import nn
+import torch
 import torch.nn.functional as F
 import models.functional as Func
 from math import sqrt
@@ -158,8 +159,8 @@ class AuxiliaryConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                # nn.init.xavier_normal_(c.weight)
-                nn.init.normal_(c.weight)
+                nn.init.xavier_normal_(c.weight)
+                # nn.init.normal_(c.weight)
                 if c.bias is not None:
                     nn.init.normal_(c.bias)
 
@@ -232,26 +233,47 @@ class GCNHead(nn.Module):
         self.decoder_reg = nn.Linear(self.n_points * self.node_dim, self.n_points * 2)
         self.adjacency_mat, self.degree_matrix = self.create_graph(self.n_points)  # Both are 9x9 matrix
 
+        # Initialize convolutions' parameters
+        self.init_conv2d()
+
+    def init_conv2d(self):
+        """
+        Initialize convolution parameters.
+        """
+        for c in self.children():
+            if isinstance(c, nn.Conv2d) or isinstance(c, torch.nn.Linear):
+                nn.init.xavier_normal_(c.weight)
+                # nn.init.normal_(c.weight)
+                if c.bias is not None:
+                    nn.init.normal_(c.bias)
+
     def create_graph(self, n_nodes):
         # [1.0, 0.5, 0.25, 0.125, 0.0625, 0.125, 0.25, 0.5] for 9 nodes
-        edge_len = [0.5 ** min(i, n_nodes - 1) for i in range(n_nodes - 1)]
-        adj_mat_half = torch.eye(n_nodes) * 0.5
+        edge_len = [0.5 ** min(i, n_nodes - i) for i in range(n_nodes)]
+        # print(edge_len)
+        # print(n_nodes)
+        adj_mat_half = torch.zeros((n_nodes, n_nodes))
         for i in range(n_nodes):
             count = 0
             for j in range(i, n_nodes):
                 adj_mat_half[i, j] = edge_len[count]
                 count += 1
 
-        adj_mat = adj_mat_half + adj_mat_half.transpose()
-        deg_mat = torch.diag(adj_mat.sum(dim=1))
+        adj_mat = adj_mat_half + torch.transpose(adj_mat_half, 0, 1) - torch.eye(n_nodes)
+        deg_mat = torch.diag(adj_mat.sum(dim=1) ** -1)
+        # print(adj_mat.data)
+        # print(deg_mat.data)
+        # exit()
 
         return adj_mat.to(self.device), deg_mat.to(self.device)
 
     def forward(self, x):
         batch_size = x.size(0)
         encoded_feats = Func.mish(self.encoder(x)).permute(0, 2, 3, 1).contiguous()  # bs, feat, feat, 4 * 9 * 16
-        graph_feat = torch.mm(torch.mm(encoded_feats.view(batch_size, -1, self.node_dim, self.n_points),
-                                       self.adjacency_mat), self.degree_matrix ** -1.)
+        graph_feat = torch.matmul(torch.matmul(encoded_feats.view(batch_size, -1, self.node_dim, self.n_points),
+                                               self.adjacency_mat.unsqueeze(0)), self.degree_matrix.unsqueeze(0))
+        # print(graph_feat.size())
+        # print(batch_size)
         cls = self.decoder_cls(graph_feat.view(batch_size, -1, self.n_points * self.node_dim))
 
         reg = self.decoder_reg(graph_feat.view(batch_size, -1, self.n_points * self.node_dim))
@@ -285,7 +307,7 @@ class PredictionConvolutions(nn.Module):
         # Number of prior-boxes we are considering per position in each feature map
         self.sigmoid = nn.Sigmoid()
         self.n_boxes = 4
-        self.scale_param = nn.Parameter(torch.FloatTensor([2, 4, 8, 16, 32, 64]))
+        self.scale_param = nn.Parameter(torch.FloatTensor([0.02, 0.04, 0.08, 0.16, 0.32, 0.64]))
         self.aspect_param = nn.Parameter(torch.FloatTensor([[1, 1], [2, 2], [4, 4], [8, 8], [16, 16], [32, 32]]))
 
         # regularize to the same dim, so that the GCN head and regression head can be shared
@@ -297,6 +319,12 @@ class PredictionConvolutions(nn.Module):
         self.node_conv11_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
 
         self.loc_conv = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        # self.loc_conv7 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        # self.loc_conv8 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        # self.loc_conv9 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        # self.loc_conv10 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        # self.loc_conv11 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+
         self.cls_conv = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim, self.config)
 
         # Initialize convolutions' parameters
@@ -308,8 +336,8 @@ class PredictionConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                # nn.init.xavier_normal_(c.weight)
-                nn.init.normal_(c.weight)
+                nn.init.xavier_normal_(c.weight)
+                # nn.init.normal_(c.weight)
                 if c.bias is not None:
                     nn.init.normal_(c.bias)
 
@@ -359,26 +387,33 @@ class PredictionConvolutions(nn.Module):
         # reg: batch, n_priors, n_points, 2
         # cls: batch, n_priors, n_classes
         reg_conv4_3, cls_conv4_3 = self.cls_conv(conv4_3_feats)
-        reg_conv4_3 = self.sigmoid(reg_conv4_3 * self.aspect_param[0].view(1, 1, 1, 2))
+        reg_conv4_3 = self.sigmoid(reg_conv4_3 *
+                                   (self.aspect_param[0].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         reg_conv7, cls_conv7 = self.cls_conv(conv7_feats)
-        reg_conv7 = self.sigmoid(reg_conv7 * self.aspect_param[1].view(1, 1, 1, 2))
+        reg_conv7 = self.sigmoid(reg_conv7 *
+                                 (self.aspect_param[1].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         reg_conv8_2, cls_conv8_2 = self.cls_conv(conv8_2_feats)
-        reg_conv8_2 = self.sigmoid(reg_conv8_2 * self.aspect_param[2].view(1, 1, 1, 2))
+        reg_conv8_2 = self.sigmoid(reg_conv8_2 *
+                                   (self.aspect_param[2].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         reg_conv9_2, cls_conv9_2 = self.cls_conv(conv9_2_feats)
-        reg_conv9_2 = self.sigmoid(reg_conv9_2 * self.aspect_param[3].view(1, 1, 1, 2))
+        reg_conv9_2 = self.sigmoid(reg_conv9_2 *
+                                   (self.aspect_param[3].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         reg_conv10_2, cls_conv10_2 = self.cls_conv(conv10_2_feats)
-        reg_conv10_2 = self.sigmoid(reg_conv10_2 * self.aspect_param[4].view(1, 1, 1, 2))
+        reg_conv10_2 = self.sigmoid(reg_conv10_2 *
+                                    (self.aspect_param[4].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         reg_conv11_2, cls_conv11_2 = self.cls_conv(conv11_2_feats)
-        reg_conv11_2 = self.sigmoid(reg_conv11_2 * self.aspect_param[5].view(1, 1, 1, 2))
+        reg_conv11_2 = self.sigmoid(reg_conv11_2 *
+                                    (self.aspect_param[5].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
         locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2, l_conv11_2],
                          dim=1)
+        # print(reg_conv4_3.size(), reg_conv7.size(), reg_conv8_2.size(), reg_conv9_2.size(), reg_conv10_2.size(), reg_conv11_2.size())
         regs_offset = torch.cat([reg_conv4_3, reg_conv7, reg_conv8_2, reg_conv9_2, reg_conv10_2, reg_conv11_2], dim=1)
         classes_scores = torch.cat([cls_conv4_3, cls_conv7, cls_conv8_2, cls_conv9_2, cls_conv10_2, cls_conv11_2],
                                    dim=1)
@@ -398,6 +433,8 @@ class SSD300GCN(nn.Module):
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
         self.pred_convs = PredictionConvolutions(n_classes, config, n_points=9, node_dim=16)
+        self.n_points = self.pred_convs.n_points
+        self.node_dim = self.pred_convs.node_dim
         self.shape_weight = nn.Parameter(data=torch.ones(1, 1, 4) * 0.5, requires_grad=True)
 
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
@@ -439,6 +476,7 @@ class SSD300GCN(nn.Module):
 
         # leverage the prediction on both predicted offsets and shapes
         final_bbox = bbox_from_shape * self.shape_weight.detach() + bbox_from_reg * (1 - self.shape_weight)
+        # final_bbox = bbox_from_reg
 
         return final_bbox, classes_scores, predicted_points
 
@@ -458,7 +496,7 @@ class SSD300GCN(nn.Module):
         """
         batch_size = predicted_offsets.size(0)
         predicted_points = predicted_offsets.view(batch_size, -1, self.n_points, 2) + \
-                           self.priors_cxcy[:, :2].view(1, 1, 1, 2)
+                           self.priors_cxcy[:, :2].view(1, -1, 1, 2)
 
         return predicted_points
 
@@ -527,7 +565,7 @@ class MultiBoxGCNLoss300(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.4, neg_pos_ratio=3):
+    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3):
         super(MultiBoxGCNLoss300, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -539,7 +577,7 @@ class MultiBoxGCNLoss300(nn.Module):
         self.config = config
 
         self.smooth_l1 = SmoothL1Loss
-        self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
+        self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=.25, config=config)
         self.SoftCE = LabelSmoothingLoss(classes=self.n_classes, smoothing=config.smooth_threshold, reduce=False)
@@ -607,7 +645,7 @@ class MultiBoxGCNLoss300(nn.Module):
 
         # LOCALIZATION LOSS
         loc_loss = self.Diou_loss(predicted_locs[positive_priors].view(-1, 4),
-                                      predicted_locs[positive_priors].view(-1, 4))
+                                  predicted_locs[positive_priors].view(-1, 4))
         # if self.config.reg_loss.upper() == 'IOU':
         #     loc_loss = self.Diou_loss(decoded_locs[positive_priors].view(-1, 4),
         #                               true_locs[positive_priors].view(-1, 4))
@@ -641,8 +679,8 @@ class MultiBoxGCNLoss300(nn.Module):
             # To do this, sort ONLY negative priors in each image in order of decreasing loss and
             # take top n_hard_negatives
             conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-            conf_loss_neg[~negative_priors] = 0.
-            # conf_loss_neg[positive_priors] = 0.
+            # conf_loss_neg[~negative_priors] = 0.
+            conf_loss_neg[positive_priors] = 0.
             conf_loss_neg, _ = conf_loss_neg.sort(dim=-1, descending=True)  # (N, 8732), sorted by decreasing hardness
             hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
                 self.device)  # (N, 8732)

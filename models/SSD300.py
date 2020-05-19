@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, FocalLoss, focal_loss
+from operators.Loss import IouLoss, SigmoidFocalLoss
 from metrics import find_jaccard_overlap
 
 
@@ -465,8 +465,7 @@ class MultiBoxLoss300(nn.Module):
         self.smooth_l1 = nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
-        self.Focal_loss = focal_loss
+        self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:

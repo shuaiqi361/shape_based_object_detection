@@ -212,7 +212,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -386,7 +386,7 @@ def evaluate(test_loader, model, optimizer, config):
 
     str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
                 'avg speed {1:.2f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
-                                                          config.scheduler._get_closed_form_lr()[0])
+                                                          config.scheduler.get_lr()[1])
     config.logger.info(str_print)
 
     del predicted_locs, predicted_scores, boxes, labels, difficulties

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, focal_loss, SmoothL1Loss
+from operators.Loss import IouLoss, SmoothL1Loss
 from metrics import find_jaccard_overlap
 
 
