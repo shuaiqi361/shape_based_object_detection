@@ -45,11 +45,11 @@ class PyramidFeatures(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias.data, 0)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                # nn.init.xavier_normal_(m.weight.data)
+                # if m.bias is not None:
+                #     nn.init.constant_(m.bias.data, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -96,11 +96,11 @@ class RegressionModel(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias.data, 0)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                # nn.init.xavier_normal_(m.weight.data)
+                # if m.bias is not None:
+                #     nn.init.constant_(m.bias.data, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -150,11 +150,11 @@ class ClassificationModel(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias.data, 0)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                # nn.init.xavier_normal_(m.weight.data)
+                # if m.bias is not None:
+                #     nn.init.constant_(m.bias.data, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -232,9 +232,9 @@ class RetinaNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                # nn.init.xavier_normal_(m.weight.data)
                 if m.bias is not None:
                     nn.init.constant_(m.bias.data, 0)
             elif isinstance(m, nn.BatchNorm2d):

@@ -364,7 +364,10 @@ class SSD512(nn.Module):
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
         self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        nn.init.constant_(self.rescale_factors_conv4_3, 10.)
+
+        self.rescale_factors_conv7 = nn.Parameter(torch.FloatTensor(1, 1024, 1, 1))
+        nn.init.constant_(self.rescale_factors_conv7, 8.)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -387,6 +390,10 @@ class SSD512(nn.Module):
         norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
         conv4_3_feats = conv4_3_feats / norm  # (N, 512, 64, 64)
         conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
+
+        norm7 = conv7_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
+        conv7_feats = conv7_feats / norm7  # (N, 512, 64, 64)
+        conv7_feats = conv7_feats * self.rescale_factors_conv7  # (N, 512, 64, 64)
 
         # Run auxiliary convolutions (higher level feature map generators)
         conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats, conv12_2_feats = \
@@ -424,10 +431,10 @@ class SSD512(nn.Module):
         obj_scales = {'conv4_3': 0.04,
                       'conv7': 0.08,
                       'conv8_2': 0.16,
-                      'conv9_2': 0.32,
-                      'conv10_2': 0.48,
+                      'conv9_2': 0.24,
+                      'conv10_2': 0.32,
                       'conv11_2': 0.64,
-                      'conv12_2': 0.8}
+                      'conv12_2': 0.96}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1., 2., 0.5],
@@ -486,7 +493,7 @@ class MultiBoxLoss512(nn.Module):
         self.n_classes = config.n_classes
         self.config = config
 
-        self.smooth_l1 = SmoothL1Loss  # nn.L1Loss()
+        self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)
@@ -603,9 +610,9 @@ class MultiBoxLoss512(nn.Module):
             conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
             # conf_loss_neg = conf_loss_all[negative_priors]
             # print(positive_priors.size(), negative_priors.size(), conf_loss_pos.size(), conf_loss_neg.size())
-            conf_loss_neg[~negative_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-            # conf_loss_neg[positive_priors] = 0.
-            conf_loss_neg, _ = conf_loss_neg.sort(dim=-1, descending=True)  # (N, 8732), sorted by decreasing hardness
+            # conf_loss_neg[~negative_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+            conf_loss_neg[positive_priors] = 0.
+            conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, 8732), sorted by decreasing hardness
             hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
                 self.device)  # (N, 8732)
             hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)

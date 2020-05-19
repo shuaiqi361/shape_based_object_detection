@@ -209,7 +209,7 @@ def main():
               epoch=epoch, config=config)
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -253,7 +253,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     # Batches
 
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
-        if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
+        if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and 5000 > i > 0:
             warm_up_learning_rate(optimizer, rate=config.optimizer['warm_up_rate'])
 
         data_time.update(time.time() - start)
