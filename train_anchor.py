@@ -201,6 +201,10 @@ def main():
         config.tb_logger.add_scalar('learning_rate', epoch)
 
         # evaluate(test_loader, model, optimizer, config=config)
+        # save_checkpoint(epoch, model, optimizer,
+        #                 name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+        #                                                                    config.model['arch'].lower(),
+        #                                                                    config.data_name.lower(), epoch))
 
         train(train_loader=train_loader,
               model=model,

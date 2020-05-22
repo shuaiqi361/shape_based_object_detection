@@ -5,7 +5,7 @@ import math
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, FocalLoss, SigmoidFocalLoss, SmoothL1Loss
+from operators.Loss import IouLoss, FocalLoss, SigmoidFocalLoss, SmoothL1Loss, focal_loss
 from metrics import find_jaccard_overlap
 from .utils import BasicBlock, Bottleneck
 
@@ -43,16 +43,16 @@ class PyramidFeatures(nn.Module):
         self.P7_1 = nn.ReLU()
         self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                # nn.init.xavier_normal_(m.weight.data)
-                # if m.bias is not None:
-                #     nn.init.constant_(m.bias.data, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        #         m.weight.data.normal_(0, math.sqrt(2. / n))
+        #         # nn.init.xavier_normal_(m.weight.data)
+        #         # if m.bias is not None:
+        #         #     nn.init.constant_(m.bias.data, 0)
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
 
     def forward(self, c3, c4, c5):
         P5_x = self.P5_1(c5)
@@ -94,16 +94,16 @@ class RegressionModel(nn.Module):
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                # nn.init.xavier_normal_(m.weight.data)
-                # if m.bias is not None:
-                #     nn.init.constant_(m.bias.data, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        #         m.weight.data.normal_(0, math.sqrt(2. / n))
+        #         # nn.init.xavier_normal_(m.weight.data)
+        #         # if m.bias is not None:
+        #         #     nn.init.constant_(m.bias.data, 0)
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
 
     def forward(self, x):
         out = self.conv1(x)
@@ -148,16 +148,16 @@ class ClassificationModel(nn.Module):
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
         # self.output_act = nn.Sigmoid()
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                # nn.init.xavier_normal_(m.weight.data)
-                # if m.bias is not None:
-                #     nn.init.constant_(m.bias.data, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        #         m.weight.data.normal_(0, math.sqrt(2. / n))
+        #         # nn.init.xavier_normal_(m.weight.data)
+        #         # if m.bias is not None:
+        #         #     nn.init.constant_(m.bias.data, 0)
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
 
     def forward(self, x):
         out = self.conv1(x)
@@ -235,8 +235,8 @@ class RetinaNet(nn.Module):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
                 # nn.init.xavier_normal_(m.weight.data)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias.data, 0)
+                # if m.bias is not None:
+                #     nn.init.constant_(m.bias.data, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -251,7 +251,7 @@ class RetinaNet(nn.Module):
         # self.regressionModel.output.bias.data.fill_(0)
 
         self.classificationModel.output.weight.data.fill_(0)
-        self.classificationModel.output.bias.data.fill_(-math.log((1.0 -self. prior) / self.prior))
+        self.classificationModel.output.bias.data.fill_(-math.log((1.0 - self. prior) / self.prior))
 
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
@@ -373,8 +373,8 @@ class RetinaFocalLoss(nn.Module):
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss()
-        # self.Focal_loss = focal_loss
-        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.Focal_loss = focal_loss
+        # self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
