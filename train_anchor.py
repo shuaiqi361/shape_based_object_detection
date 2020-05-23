@@ -244,7 +244,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     :param optimizer: optimizer
     :param epoch: epoch number
     """
-
+    torch.cuda.empty_cache()
     model.train()  # training mode enables dropout
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
@@ -310,7 +310,8 @@ def evaluate(test_loader, model, optimizer, config):
     """
 
     # Make sure it's in eval mode
-    model.train()
+    torch.cuda.empty_cache()
+    model.eval()
 
     pp = pprint.PrettyPrinter()
 
@@ -388,7 +389,7 @@ def evaluate(test_loader, model, optimizer, config):
     str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
     config.logger.info(str_print)
 
-    del predicted_locs, predicted_scores, boxes, labels
+    del predicted_locs, predicted_scores, boxes, labels, difficulties, images
 
     return APs, mAP
 
