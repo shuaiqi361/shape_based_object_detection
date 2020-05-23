@@ -332,9 +332,9 @@ class MultiBoxPANetLoss(nn.Module):
         self.config = config
 
         self.smooth_l1 = SmoothL1Loss()
-        self.Iou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
+        self.Iou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.SoftCE = LabelSmoothingLoss(classes=self.n_classes, smoothing=0.05)
+        self.SoftCE = LabelSmoothingLoss(classes=self.n_classes, smoothing=0.1, reduce=False)
         self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=0.25, config=self.config)
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):

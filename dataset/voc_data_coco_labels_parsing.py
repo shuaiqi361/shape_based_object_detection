@@ -67,7 +67,7 @@ def parse_annotation(annotation_path):
         labels.append(VOC_label_map[label])  # get class label as a number
         difficulties.append(difficult)
 
-    return {'bbox': boxes, 'labels': labels, 'difficulties': difficulties}
+    return {'bbox': boxes, 'labels': labels, 'difficulties': difficulties, 'image_id': -1}
 
 
 def create_data_lists(voc07_path, voc12_path, output_folder):
@@ -105,11 +105,11 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
     assert len(train_objects) == len(train_images)
 
     # Save to file
-    with open(os.path.join(output_folder, 'TRAIN_images_vococo.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'TRAIN_images.json'), 'w') as j:
         json.dump(train_images, j)
-    with open(os.path.join(output_folder, 'TRAIN_objects_vococo.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'TRAIN_objects.json'), 'w') as j:
         json.dump(train_objects, j)
-    with open(os.path.join(output_folder, 'label_map_coco.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'label_map.json'), 'w') as j:
         json.dump(VOC_label_map, j)  # save label map too
 
     print('\nThere are %d training images containing a total of %d objects. Files have been saved to %s.' % (
@@ -136,9 +136,9 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
     assert len(test_objects) == len(test_images)
 
     # Save to file
-    with open(os.path.join(output_folder, 'VAL_images_vococo.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'VAL_images.json'), 'w') as j:
         json.dump(test_images, j)
-    with open(os.path.join(output_folder, 'VAL_objects_vococo.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'VAL_objects.json'), 'w') as j:
         json.dump(test_objects, j)
 
     print('\nThere are %d test images containing a total of %d objects. Files have been saved to %s.' % (
@@ -148,7 +148,7 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
 if __name__ == '__main__':
     voc07_path = '/home/keyi/research/data/VOC_2007/VOCdevkit/VOC2007'
     voc12_path = '/home/keyi/research/data/VOC_2012/VOCdevkit/VOC2012'
-    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/VOC'
+    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/VOCOCO'
     #
     # create_data_lists(voc07_path, voc12_path, output_folder)
 

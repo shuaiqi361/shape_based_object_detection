@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate, warm_up_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset, BaseModelVOCOCODataset
 from utils import create_logger, save_checkpoint, clip_gradient
 from dataset.transforms import bof_augment
 from models.utils import detect
@@ -149,6 +149,15 @@ def main():
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
+    elif config.data_name.upper() == 'VOCOCO':
+        train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=False)
+        test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', input_size=input_size, config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
     else:
         raise NotImplementedError
 
@@ -202,7 +211,11 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # evaluate(test_loader, model, optimizer, config=config)
+        evaluate(test_loader, model, optimizer, config=config)
+        save_checkpoint(epoch, model, optimizer,
+                        name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+                                                                           config.model['arch'].lower(),
+                                                                           config.data_name.lower(), epoch))
 
         train(train_loader=train_loader,
               model=model,
@@ -213,7 +226,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -244,7 +257,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     :param optimizer: optimizer
     :param epoch: epoch number
     """
-
+    torch.cuda.empty_cache()
     model.train()  # training mode enables dropout
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
@@ -315,7 +328,8 @@ def evaluate(test_loader, model, optimizer, config):
     """
 
     # Make sure it's in eval mode
-    model.train()
+    torch.cuda.empty_cache()
+    model.eval()
 
     pp = pprint.PrettyPrinter()
 
@@ -342,7 +356,7 @@ def evaluate(test_loader, model, optimizer, config):
             predicted_locs, predicted_scores = model(images)
 
             # Detect objects in SSD output
-            if config.data_name.upper() == 'COCO':
+            if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
                     detect(predicted_locs,
                            predicted_scores,
@@ -393,10 +407,10 @@ def evaluate(test_loader, model, optimizer, config):
 
     str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
                 'avg speed {1:.2f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
-                                                          config.scheduler._get_closed_form_lr()[0])
+                                                          config.scheduler.get_lr()[1])
     config.logger.info(str_print)
 
-    del predicted_locs, predicted_scores, boxes, labels, difficulties
+    del predicted_locs, predicted_scores, boxes, labels, difficulties, images
 
     return APs, mAP
 

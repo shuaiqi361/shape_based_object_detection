@@ -256,7 +256,7 @@ def resize(image, boxes, dims, return_percent_coords=True):
     return new_image, new_boxes
 
 
-def resize_keep(image, boxes, dims, return_percent_coords=True):
+def resize_keep(image, boxes, dim, return_percent_coords=True):
     """
     Resize image while keeping the orientation, the aspect ratio will change slightly. For the SSD300, resize to (300, 300).
 
@@ -272,11 +272,11 @@ def resize_keep(image, boxes, dims, return_percent_coords=True):
     # Resize image
     width, height = image.size
     if width > height:
-        if dims[0] < dims[1]:
-            dims = (dims[1], dims[0])
+        resize_factor = dim / height
+        dims = (int(width * resize_factor), dim)
     else:
-        if dims[0] > dims[1]:
-            dims = (dims[1], dims[0])
+        resize_factor = dim / width
+        dims = (dim, int(height * resize_factor))
 
     new_image = FT.resize(image, dims)
 
@@ -466,10 +466,10 @@ def bof_augment(images, boxes, labels, config):
     resize_dims = config.model['input_size']
     resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
 
-    if 'mixup' in operation_list and random.random() < 0.5:
+    if 'mixup' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
-        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize_keep(temp_image, temp_boxes, resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -481,7 +481,7 @@ def bof_augment(images, boxes, labels, config):
         new_boxes.append(temp_boxes)
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize_keep(images[0], boxes[0], resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -489,9 +489,9 @@ def bof_augment(images, boxes, labels, config):
         new_labels.append(labels[0])
         new_boxes.append(temp_boxes)
 
-    if 'mosaic' in operation_list and random.random() < 0.5:
+    if 'mosaic' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
-        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize_keep(temp_image, temp_boxes, resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -499,7 +499,7 @@ def bof_augment(images, boxes, labels, config):
         new_boxes.append(temp_boxes)
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize(images[2], boxes[2], dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize_keep(images[2], boxes[2], resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -521,16 +521,14 @@ def mosaic_image(images, boxes, labels):
         temp_boxes = boxes[i]
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(512, 512), return_percent_coords=False)
         new_image.paste(temp_image, 512 * (i // 2, i % 2))
-        new_labels.append(labels[i])
+        new_labels += labels[i]
         temp_boxes[:, 0] += 512 * (i % 2)
         temp_boxes[:, 1] += 512 * (i // 2)
         temp_boxes[:, 2] += 512 * (i % 2)
         temp_boxes[:, 3] += 512 * (i // 2)
-        new_boxes.append(temp_boxes)
+        new_boxes += temp_boxes
 
     return new_image, new_boxes, new_labels
-
-
 
 
 def mixup_image(images, boxes, labels, beta=1.5):
@@ -544,7 +542,8 @@ def mixup_image(images, boxes, labels, beta=1.5):
     new_height = max(height1, height2)
     new_image = torch.zeros((3, new_height, new_width))
 
-    lam = np.random.beta(beta, beta)
+    # lam = np.random.beta(beta, beta)
+    lam = np.random.uniform(0.3, 0.7, 1)[0]
 
     if new_height > height1:  # sample where to put the image1
         start_idx_h = np.random.randint(0, new_height - height1)
@@ -590,4 +589,4 @@ def mixup_image(images, boxes, labels, beta=1.5):
         else:
             new_image += image2 * (1 - lam)
 
-    return new_image, boxes[0].append(boxes[1]), labels[0].append(labels[1])
+    return new_image, boxes[0] + boxes[1], labels[0] + labels[1]
