@@ -300,7 +300,7 @@ class BaseModelVOCOCODataset(Dataset):
 
         # Read objects in this image (bounding boxes, labels, difficulties)
         objects = self.objects[i]
-        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
+        boxes = torch.FloatTensor(objects['bbox'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
         ids = objects['image_id']
         difficulties = torch.LongTensor(objects['difficulties'])
@@ -341,6 +341,6 @@ class BaseModelVOCOCODataset(Dataset):
             ids.append(b[3])
             difficulties.append(b[4])
 
-        images = torch.stack(images, dim=0)
+        # images = torch.stack(images, dim=0)
 
         return images, boxes, labels, ids, difficulties

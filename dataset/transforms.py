@@ -244,7 +244,7 @@ def resize(image, boxes, dims, return_percent_coords=True):
     """
     # Resize image
     new_image = FT.resize(image, dims)
-
+    # print('In resize:', boxes)
     # Resize bounding boxes
     old_dims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
     new_boxes = boxes / old_dims  # percent coordinates
@@ -254,6 +254,7 @@ def resize(image, boxes, dims, return_percent_coords=True):
         new_boxes = new_boxes * new_dims
 
     return new_image, new_boxes
+
 
 
 def resize_keep(image, boxes, dim, return_percent_coords=True):
@@ -446,7 +447,7 @@ def transform_richer(image, boxes, labels, split, config):
         return new_image, new_boxes, new_labels
 
     # Resize image
-    new_image, new_boxes = resize_keep(new_image, new_boxes, test_size, return_percent_coords=return_percent_coords)
+    new_image, new_boxes = resize(new_image, new_boxes, dims=(test_size, test_size), return_percent_coords=return_percent_coords)
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)
@@ -459,29 +460,31 @@ def transform_richer(image, boxes, labels, split, config):
 
 def bof_augment(images, boxes, labels, config):
     operation_list = config.model['operation_list']
-    assert len(labels) == 4  # hard code 4 images per batch, return 2 images
+    assert len(labels) == 4  # hard code 4 images per batch, return 2 images, the box is a list of 4 tensors, each tensor contains a 2-d vetor with many bboxes
     new_images = list()
     new_labels = list()
     new_boxes = list()
     resize_dims = config.model['input_size']
     resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
+    # print('boxes from loader', boxes)
 
-    if 'mixup' in operation_list and random.random() < 0.25:
+    if 'mixup' in operation_list and random.random() < 0.5:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
-        temp_image, temp_boxes = resize_keep(temp_image, temp_boxes, resize_dim,
+
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
 
         # fill the background with no mixup with mean pixels
-        temp_image[temp_image == 0] = torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)
+        # temp_image[temp_image == 0] = torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)
 
         new_images.append(temp_image)
         new_boxes.append(temp_boxes)
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize_keep(images[0], boxes[0], resize_dim,
+        temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -489,9 +492,10 @@ def bof_augment(images, boxes, labels, config):
         new_labels.append(labels[0])
         new_boxes.append(temp_boxes)
 
-    if 'mosaic' in operation_list and random.random() < 0.25:
+    if 'mosaic' in operation_list and random.random() < 0.5:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
-        temp_image, temp_boxes = resize_keep(temp_image, temp_boxes, resize_dim,
+        # temp_boxes = torch.cat(temp_boxes, dim=0)
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -499,7 +503,7 @@ def bof_augment(images, boxes, labels, config):
         new_boxes.append(temp_boxes)
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize_keep(images[2], boxes[2], resize_dim,
+        temp_image, temp_boxes = resize(images[2], boxes[2], dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -515,29 +519,29 @@ def mosaic_image(images, boxes, labels):
     new_image = Image.new('RGB', (512 * 2, 512 * 2))
     new_labels = list()
     new_boxes = list()
-
+    # print(boxes)
     for i in range(len(labels)):
         temp_image = images[i]
         temp_boxes = boxes[i]
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(512, 512), return_percent_coords=False)
-        new_image.paste(temp_image, 512 * (i // 2, i % 2))
-        new_labels += labels[i]
+        new_image.paste(temp_image, box=(512 * i // 2, 512 * i % 2))
+        new_labels.append(labels[i])
         temp_boxes[:, 0] += 512 * (i % 2)
         temp_boxes[:, 1] += 512 * (i // 2)
         temp_boxes[:, 2] += 512 * (i % 2)
         temp_boxes[:, 3] += 512 * (i // 2)
-        new_boxes += temp_boxes
+        new_boxes.append(temp_boxes)
 
-    return new_image, new_boxes, new_labels
+    return new_image, torch.cat(new_boxes, dim=0), torch.cat(new_labels, dim=0)
 
 
 def mixup_image(images, boxes, labels, beta=1.5):
-    assert len(labels) == 2  # currently only support mix 2 images up
+    assert len(labels) == 2  # currently only support mix 2 images up, box is still a list of bboxes for 2 images
     image1 = FT.to_tensor(images[0])
     image2 = FT.to_tensor(images[1])
     _, height1, width1 = image1.size()
     _, height2, width2 = image2.size()
-
+    # print('In mixup: ', boxes)
     new_width = max(width1, width2)
     new_height = max(height1, height2)
     new_image = torch.zeros((3, new_height, new_width))
@@ -550,20 +554,20 @@ def mixup_image(images, boxes, labels, beta=1.5):
         if new_width > width1:
             start_idx_w = np.random.randint(0, new_width - width1)
             new_image[:, start_idx_h:start_idx_h + height1, start_idx_w:start_idx_w + width1] += image1 * lam
-            boxes[0][0] += start_idx_w
-            boxes[0][1] += start_idx_h
-            boxes[0][2] += start_idx_w
-            boxes[0][3] += start_idx_h
+            boxes[0][:, 0] += start_idx_w
+            boxes[0][:, 1] += start_idx_h
+            boxes[0][:, 2] += start_idx_w
+            boxes[0][:, 3] += start_idx_h
         else:
             new_image[:, start_idx_h:start_idx_h + height1, :] += image1 * lam
-            boxes[0][1] += start_idx_h
-            boxes[0][3] += start_idx_h
+            boxes[0][:, 1] += start_idx_h
+            boxes[0][:, 3] += start_idx_h
     else:
         if new_width > width1:
             start_idx_w = np.random.randint(0, new_width - width1)
             new_image[:, :, start_idx_w:start_idx_w + width1] += image1 * lam
-            boxes[0][0] += start_idx_w
-            boxes[0][2] += start_idx_w
+            boxes[0][:, 0] += start_idx_w
+            boxes[0][:, 2] += start_idx_w
         else:
             new_image += image1 * lam
 
@@ -572,21 +576,21 @@ def mixup_image(images, boxes, labels, beta=1.5):
         if new_width > width2:
             start_idx_w = np.random.randint(0, new_width - width2)
             new_image[:, start_idx_h:start_idx_h + height2, start_idx_w:start_idx_w + width2] += image2 * (1 - lam)
-            boxes[1][0] += start_idx_w
-            boxes[1][1] += start_idx_h
-            boxes[1][2] += start_idx_w
-            boxes[1][3] += start_idx_h
+            boxes[1][:, 0] += start_idx_w
+            boxes[1][:, 1] += start_idx_h
+            boxes[1][:, 2] += start_idx_w
+            boxes[1][:, 3] += start_idx_h
         else:
             new_image[:, start_idx_h:start_idx_h + height2, :] += image2 * (1 - lam)
-            boxes[1][1] += start_idx_h
-            boxes[1][3] += start_idx_h
+            boxes[1][:, 1] += start_idx_h
+            boxes[1][:, 3] += start_idx_h
     else:
         if new_width > width2:
             start_idx_w = np.random.randint(0, new_width - width2)
             new_image[:, :, start_idx_w:start_idx_w + width2] += image2 * (1 - lam)
-            boxes[1][0] += start_idx_w
-            boxes[1][2] += start_idx_w
+            boxes[1][:, 0] += start_idx_w
+            boxes[1][:, 2] += start_idx_w
         else:
             new_image += image2 * (1 - lam)
 
-    return new_image, boxes[0] + boxes[1], labels[0] + labels[1]
+    return new_image, torch.cat([boxes[0], boxes[1]], dim=0), torch.cat([labels[0], labels[1]], dim=0)

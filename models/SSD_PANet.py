@@ -6,7 +6,7 @@ import torchvision
 from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
-from .modules import mish, AdaptivePooling, AttentionHead, AttentionHeadSplit
+from .modules import Mish, AdaptivePooling, AttentionHead, AttentionHeadSplit
 
 
 class VGGBase(nn.Module):
@@ -49,6 +49,7 @@ class VGGBase(nn.Module):
 
         # Load pretrained layers
         self.load_pretrained_layers()
+        self.mish = Mish()
 
     def forward(self, image):
         """
@@ -56,34 +57,34 @@ class VGGBase(nn.Module):
         :param image: images, a tensor of dimensions (N, 3, 512, 512)
         :return: lower-level feature maps conv4_3 and conv7
         """
-        out = mish(self.conv1_1(image))  # (N, 64, 512, 512)
-        out = mish(self.conv1_2(out))  # (N, 64, 512, 512)
+        out = self.mish(self.conv1_1(image))  # (N, 64, 512, 512)
+        out = self.mish(self.conv1_2(out))  # (N, 64, 512, 512)
         out = self.pool1(out)  # (N, 64, 256, 256)
 
-        out = mish(self.conv2_1(out))  # (N, 128, 256, 256)
-        out = mish(self.conv2_2(out))  # (N, 128, 256, 256)
+        out = self.mish(self.conv2_1(out))  # (N, 128, 256, 256)
+        out = self.mish(self.conv2_2(out))  # (N, 128, 256, 256)
         out = self.pool2(out)  # (N, 128, 128, 128)
 
-        out = mish(self.conv3_1(out))  # (N, 256, 128, 128)
-        out = mish(self.conv3_2(out))  # (N, 256, 128, 128)
-        out = mish(self.conv3_3(out))  # (N, 256, 128, 128)
+        out = self.mish(self.conv3_1(out))  # (N, 256, 128, 128)
+        out = self.mish(self.conv3_2(out))  # (N, 256, 128, 128)
+        out = self.mish(self.conv3_3(out))  # (N, 256, 128, 128)
         out = self.pool3(out)  # (N, 256, 64, 64), it would have been 37 if not for ceil_mode = True
 
-        out = mish(self.conv4_1(out))  # (N, 512, 64, 64)
-        out = mish(self.conv4_2(out))  # (N, 512, 64, 64)
-        out = mish(self.conv4_3(out))  # (N, 512, 64, 64)
+        out = self.mish(self.conv4_1(out))  # (N, 512, 64, 64)
+        out = self.mish(self.conv4_2(out))  # (N, 512, 64, 64)
+        out = self.mish(self.conv4_3(out))  # (N, 512, 64, 64)
         conv4_3_feats = out  # (N, 512, 64, 64)
         out = self.pool4(out)  # (N, 512, 32, 32)
 
-        out = mish(self.conv5_1(out))  # (N, 512, 32, 32)
-        out = mish(self.conv5_2(out))  # (N, 512, 32, 32)
-        out = mish(self.conv5_3(out))  # (N, 512, 32, 32)
+        out = self.mish(self.conv5_1(out))  # (N, 512, 32, 32)
+        out = self.mish(self.conv5_2(out))  # (N, 512, 32, 32)
+        out = self.mish(self.conv5_3(out))  # (N, 512, 32, 32)
         conv5_3_feats = out  # (N, 512, 32, 32)
         out = self.pool5(out)  # (N, 512, 16, 16)
 
-        out = mish(self.conv6(out))  # (N, 1024, 16, 16)
+        out = self.mish(self.conv6(out))  # (N, 1024, 16, 16)
 
-        conv7_feats = mish(self.conv7(out))  # (N, 1024, 16, 16)
+        conv7_feats = self.mish(self.conv7(out))  # (N, 1024, 16, 16)
 
         return conv4_3_feats, conv5_3_feats, conv7_feats
 
@@ -98,11 +99,19 @@ class VGGBase(nn.Module):
 
         # Current state of base
         state_dict = self.state_dict()
-        param_names = list(state_dict.keys())
+        param_names_full = list(state_dict.keys())
+        param_names = []
+        for i in range(len(param_names_full)):
+            if param_names_full[i].startswith('pool3.'):
+                continue
+            else:
+                param_names.append(param_names_full[i])
+        # print(param_names)
 
         # Pretrained VGG base
         pretrained_state_dict = torchvision.models.vgg16(pretrained=True).state_dict()
         pretrained_param_names = list(pretrained_state_dict.keys())
+        # print(pretrained_param_names)
 
         # Transfer conv. parameters from pretrained model to current model
         for i, param in enumerate(param_names[:-4]):  # excluding conv6 and conv7 parameters
@@ -130,7 +139,7 @@ class VGGBase(nn.Module):
 
 
 class PathAggregateFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=128):
         super(PathAggregateFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
@@ -159,11 +168,11 @@ class PathAggregateFeatures(nn.Module):
         self.N6_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # "P7 is computed by applying ReLU followed by a 3x3 stride-2 conv on P6"
-        self.P7_1 = mish
+        self.P7_1 = Mish()
         self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
         self.N7_1 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
         self.N7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
-        self.mish = mish
+        self.mish = Mish()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -203,7 +212,7 @@ class PathAggregateFeatures(nn.Module):
         N6_x = self.N6_1(N5_x)
         N6_x = self.N6_2(N6_x + P6_x)
 
-        N7_x = self.P7_1(N6_x)
+        N7_x = self.N7_1(N6_x)
         N7_x = self.N7_2(N7_x + P7_x)
 
         return N3_x, N4_x, N5_x, N6_x, N7_x
@@ -215,38 +224,39 @@ class PredictionHead(nn.Module):
 
         self.n_classes = n_classes
         self.n_boxes = {
-            'N3': 9,
-            'N4': 9,
-            'N5': 9,
-            'N6': 9,
-            'N7': 9
+            'N3': 3,
+            'N4': 3,
+            'N5': 3,
+            'N6': 3,
+            'N7': 3
         }
 
         if mode.upper() == 'FULL':
-            self.det_N3 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N3'] * 4,
+            self.det_N3 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N3'] * 4,
                                         cls_out=self.n_boxes['N3'] * self.n_classes)
-            self.det_N4 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
-                                        cls_out=self.n_boxes['N4'] * self.n_classes)
-            self.det_N5 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
-                                        cls_out=self.n_boxes['N5'] * self.n_classes)
-            self.det_N6 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
-                                        cls_out=self.n_boxes['N6'] * self.n_classes)
-            self.det_N7 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
-                                        cls_out=self.n_boxes['N7'] * self.n_classes)
+            # self.det_N4 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
+            #                             cls_out=self.n_boxes['N4'] * self.n_classes)
+            # self.det_N5 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
+            #                             cls_out=self.n_boxes['N5'] * self.n_classes)
+            # self.det_N6 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
+            #                             cls_out=self.n_boxes['N6'] * self.n_classes)
+            # self.det_N7 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
+            #                             cls_out=self.n_boxes['N7'] * self.n_classes)
         else:
-            self.det_N3 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N3'] * 4,
+            self.det_N3 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N3'] * 4,
                                              cls_out=self.n_boxes['N3'] * self.n_classes)
-            self.det_N4 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
-                                             cls_out=self.n_boxes['N4'] * self.n_classes)
-            self.det_N5 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
-                                             cls_out=self.n_boxes['N5'] * self.n_classes)
-            self.det_N6 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
-                                             cls_out=self.n_boxes['N6'] * self.n_classes)
-            self.det_N7 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
-                                             cls_out=self.n_boxes['N7'] * self.n_classes)
+            # self.det_N4 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
+            #                                  cls_out=self.n_boxes['N4'] * self.n_classes)
+            # self.det_N5 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
+            #                                  cls_out=self.n_boxes['N5'] * self.n_classes)
+            # self.det_N6 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
+            #                                  cls_out=self.n_boxes['N6'] * self.n_classes)
+            # self.det_N7 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
+            #                                  cls_out=self.n_boxes['N7'] * self.n_classes)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
+        self.mish = Mish()
 
     def init_conv2d(self):
         """
@@ -261,10 +271,10 @@ class PredictionHead(nn.Module):
     def forward(self, features):
         n3, n4, n5, n6, n7 = features
         loc_n3, cls_n3 = self.det_N3(n3)
-        loc_n4, cls_n4 = self.det_N4(n4)
-        loc_n5, cls_n5 = self.det_N5(n5)
-        loc_n6, cls_n6 = self.det_N6(n6)
-        loc_n7, cls_n7 = self.det_N7(n7)
+        loc_n4, cls_n4 = self.det_N3(n4)
+        loc_n5, cls_n5 = self.det_N3(n5)
+        loc_n6, cls_n6 = self.det_N3(n6)
+        loc_n7, cls_n7 = self.det_N3(n7)
 
         locs = torch.cat([loc_n3, loc_n4, loc_n5, loc_n6, loc_n7], dim=1).contiguous()
         classes_scores = torch.cat([cls_n3, cls_n4, cls_n5, cls_n6, cls_n7], dim=1).contiguous()
@@ -286,17 +296,20 @@ class SSDPANet(nn.Module):
         nn.init.constant_(self.rescale_factors_conv4_3, 20.)
 
         # Prior boxes
-        self.priors_cxcy = self.create_prior_boxes()
+        self.priors_cxcy = self.create_anchors()
 
     def forward(self, image):
         conv4_3_feats, conv5_3_feats, conv7_feats = self.base(image)
+        torch.cuda.empty_cache()
         # (N, 512, 64, 64), (N, 512, 32, 32), (N, 1024, 16, 16)
 
         norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
         conv4_3_feats = conv4_3_feats / norm  # (N, 512, 64, 64)
         conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
+        torch.cuda.empty_cache()
 
         features = self.fpn_convs(conv4_3_feats, conv5_3_feats, conv7_feats)
+        torch.cuda.empty_cache()
 
         locs, scores = self.pred_convs(features)
 
@@ -318,7 +331,8 @@ class SSDPANet(nn.Module):
                       'c5': 0.16,
                       'c6': 0.32,
                       'c7': 0.64}
-        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        scale_factor = [1.0]
         aspect_ratios = {'c3': [1., 2., 0.5],
                          'c4': [1., 2., 0.5],
                          'c5': [1., 2., 0.5],
@@ -384,7 +398,7 @@ class MultiBoxPANetLoss(nn.Module):
         n_priors = self.priors_cxcy.size(0)
         n_classes = predicted_scores.size(2)
 
-        # print(n_priors, predicted_locs.size(), predicted_scores.size())
+        print(n_priors, predicted_locs.size(), predicted_scores.size())
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
         decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)

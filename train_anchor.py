@@ -150,12 +150,12 @@ def main():
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOCOCO':
-        train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
-        test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', input_size=input_size, config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
+        test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     else:
@@ -211,11 +211,11 @@ def main():
 
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        evaluate(test_loader, model, optimizer, config=config)
-        save_checkpoint(epoch, model, optimizer,
-                        name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
-                                                                           config.model['arch'].lower(),
-                                                                           config.data_name.lower(), epoch))
+        # evaluate(test_loader, model, optimizer, config=config)
+        # save_checkpoint(epoch, model, optimizer,
+        #                 name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+        #                                                                    config.model['arch'].lower(),
+        #                                                                    config.data_name.lower(), epoch))
 
         train(train_loader=train_loader,
               model=model,

@@ -10,13 +10,15 @@ def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
 
-def mish(inputs):
+class Mish(nn.Module):
     """
         Applies the mish function element-wise:
         mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
         See additional documentation for mish class.
     """
-    return input * torch.tanh(F.softplus(input))
+    def forward(self, input):
+
+        return input * torch.tanh(F.softplus(input))
 
 
 class AdaptivePooling(nn.Module):
@@ -28,18 +30,19 @@ class AdaptivePooling(nn.Module):
         self.adaptive_size = adaptive_size
 
         # multiple branches for feature extraction
-        self.conv_astrous1 = nn.Conv2d(self.inplane, 256, kernel_size=self.kernel_size, padding=1, dilation=1)
-        self.conv_astrous2 = nn.Conv2d(self.inplane, 256, kernel_size=self.kernel_size, padding=1, dilation=3)
-        self.conv_astrous3 = nn.Conv2d(self.inplane, 256, kernel_size=self.kernel_size, padding=1, dilation=5)
+        self.conv_astrous1 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=1, dilation=1)
+        self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=3, dilation=3)
+        self.conv_astrous3 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=5, dilation=5)
 
         self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
-        self.transition = nn.Conv2d(256 * 3, self.outplane, kernel_size=1)
-        self.act = mish
+        self.transition = nn.Conv2d(128 * 3, self.outplane, kernel_size=1)
+        self.act = Mish()
 
     def forward(self, x):
         astrous1 = self.conv_astrous1(x)
         astrous2 = self.conv_astrous2(x)
         astrous3 = self.conv_astrous3(x)
+        # print(astrous1.size(), astrous2.size(), astrous3.size())
         feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
         canonical_feat = self.pool(self.act(feat))
 
@@ -76,7 +79,7 @@ class AttentionHead(nn.Module):
 
 class AttentionHeadSplit(nn.Module):
     def __init__(self, inplanes, reg_out, cls_out):
-        super(AttentionHead, self).__init__()
+        super(AttentionHeadSplit, self).__init__()
         self.reg_out = reg_out
         self.cls_out = cls_out
         self.inplanes = inplanes
@@ -89,18 +92,16 @@ class AttentionHeadSplit(nn.Module):
 
     def forward(self, x):
         assert self.inplanes == x.size(1)
+
         reg_feat = x[:, :self.n_channels, :, :]
         cls_feat = x[:, self.n_channels:, :, :]
+        # print(reg_feat.size(), cls_feat.size())
 
-        reg_mask = torch.sigmoid(self.reg_conv(x))
-        cls_mask = torch.sigmoid(self.cls_conv(x))
+        reg_mask = torch.sigmoid(self.reg_conv(reg_feat))
+        cls_mask = torch.sigmoid(self.cls_conv(cls_feat))
 
         reg_feat = self.reg_conv_out(reg_mask * reg_feat)
         cls_feat = self.cls_conv_out(cls_mask * cls_feat)
 
         return reg_feat.permute(0, 2, 3, 1).contiguous().view(x.size(0), -1, 4), \
                cls_feat.permute(0, 2, 3, 1).contiguous().view(x.size(0), -1, self.n_classes)
-
-
-
-
