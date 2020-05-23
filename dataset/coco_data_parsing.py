@@ -51,7 +51,7 @@ def create_data_lists_coco17(coco_root_path, output_folder):
             continue
 
         bbox = annotation['bbox']
-        if bbox[2] < 2 or bbox[3] < 2:
+        if bbox[2] < 1 or bbox[3] < 1:
             print('Eliminate small objects for training < 1px.')
             continue
 
