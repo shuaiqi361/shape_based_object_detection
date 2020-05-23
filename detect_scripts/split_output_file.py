@@ -1,10 +1,10 @@
 import os
 
-width = 3840.
-height = 2160.
+width = 1920.
+height = 1440.
 
-result_file = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/SSD512_exp_003/live_results/20200224_153147_demo4_SSD512.txt'
-split_result = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/SSD512_exp_003/live_results/20200224_153147_demo4_SSD512_split.txt'
+result_file = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/SSD512_exp_003/live_results/GXAB0755_folder_1800.txt'
+split_result = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/SSD512_exp_003/live_results/GXAB0755_folder_1800_parse.txt'
 
 
 f_result = open(result_file, 'r')
