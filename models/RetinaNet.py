@@ -469,7 +469,7 @@ class RetinaFocalLoss(nn.Module):
                                       true_classes[negative_priors]], dim=0)
 
             conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                        target_class.view(-1)) / n_positives.sum().float()
+                                        target_class.view(-1), device=self.config.device) / n_positives.sum().float()
             # conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
             #                             target_class.view(-1), device=self.config.device) / n_positives.sum().float()
         else:

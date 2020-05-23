@@ -6,7 +6,7 @@ from .iou_utils import bbox_overlaps_iou, bbox_overlaps_ciou, bbox_overlaps_diou
 from torch.autograd import Variable
 
 
-def focal_loss(y_pred, y_true, alpha=0.25, gamma=2,):
+def focal_loss(y_pred, y_true, alpha=0.25, gamma=2., device='cuda:0'):
 
     if isinstance(alpha,(list,tuple)):
         fore_alpha = alpha[0] # postive sample ratio in the entire dataset
@@ -17,7 +17,7 @@ def focal_loss(y_pred, y_true, alpha=0.25, gamma=2,):
 
     n_positives = (y_true!=0).sum() # all postive anchors for 20 class
 
-    y_true = torch.eye(y_pred.shape[-1])[y_true].cuda() # one hot vector for all prediction
+    y_true = torch.eye(y_pred.shape[-1])[y_true].to(device) # one hot vector for all prediction
     # print('y_true: ', y_true.size())
     y_pred = F.softmax(y_pred,dim=1) # apply softmax
 

@@ -375,6 +375,7 @@ def evaluate(test_loader, model, optimizer, config):
             true_labels.extend(labels)
             true_difficulties.extend(difficulties)
             detect_speed.append((time_end - time_start) / len(labels))
+            torch.cuda.empty_cache()
 
         # Calculate mAP
         APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
