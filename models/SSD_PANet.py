@@ -258,6 +258,50 @@ class PredictionHead(nn.Module):
                 if c.bias is not None:
                     nn.init.constant_(c.bias, val=0)
 
+    def forward(self, features):
+        n3, n4, n5, n6, n7 = features
+        loc_n3, cls_n3 = self.det_N3(n3)
+        loc_n4, cls_n4 = self.det_N4(n4)
+        loc_n5, cls_n5 = self.det_N5(n5)
+        loc_n6, cls_n6 = self.det_N6(n6)
+        loc_n7, cls_n7 = self.det_N7(n7)
+
+        locs = torch.cat([loc_n3, loc_n4, loc_n5, loc_n6, loc_n7], dim=1).contiguous()
+        classes_scores = torch.cat([cls_n3, cls_n4, cls_n5, cls_n6, cls_n7], dim=1).contiguous()
+
+        return locs, classes_scores
+
+
+class SSDPANet(nn.Module):
+    def __init__(self, config):
+        super(SSDPANet, self).__init__()
+        self.n_classes = config.n_classes
+        self.device = config.device
+
+        self.base = VGGBase()
+        self.fpn_convs = PathAggregateFeatures(512, 512, 1024)
+        self.pred_convs = PredictionHead(self.n_classes, mode='split')
+
+        self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
+        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+
+        # Prior boxes
+        self.priors_cxcy = self.create_prior_boxes()
+
+    def forward(self, image):
+        conv4_3_feats, conv5_3_feats, conv7_feats = self.base(image)
+        # (N, 512, 64, 64), (N, 512, 32, 32), (N, 1024, 16, 16)
+
+        norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
+        conv4_3_feats = conv4_3_feats / norm  # (N, 512, 64, 64)
+        conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
+
+        features = self.fpn_convs(conv4_3_feats, conv5_3_feats, conv7_feats)
+
+        locs, scores = self.pred_convs(features)
+
+        return locs, scores
+
     def create_anchors(self):
         """
         Create the anchor boxes as in RetinaNet
@@ -298,18 +342,6 @@ class PredictionHead(nn.Module):
         anchors = torch.FloatTensor(anchors).to(self.device)  # (49104, 4)
 
         return anchors.clamp_(0, 1)
-
-    def forward(self, n3, n4, n5, n6, n7):
-        loc_n3, cls_n3 = self.det_N3(n3)
-        loc_n4, cls_n4 = self.det_N4(n4)
-        loc_n5, cls_n5 = self.det_N5(n5)
-        loc_n6, cls_n6 = self.det_N6(n6)
-        loc_n7, cls_n7 = self.det_N7(n7)
-
-        locs = torch.cat([loc_n3, loc_n4, loc_n5, loc_n6, loc_n7], dim=1).contiguous()
-        classes_scores = torch.cat([cls_n3, cls_n4, cls_n5, cls_n6, cls_n7], dim=1).contiguous()
-
-        return locs, classes_scores
 
 
 class MultiBoxPANetLoss(nn.Module):
