@@ -12,7 +12,7 @@ def save_checkpoint(epoch, model, optimizer, name=None):
     :param name: save file path
     """
     state = {'epoch': epoch,
-             'model': model,
+             'model_state': model.state_dict(),
              'optimizer': optimizer}
     if name is None:
         filename = 'checkpoints/my_checkpoint_ssd300.pth.tar'

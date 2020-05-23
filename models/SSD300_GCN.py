@@ -220,7 +220,7 @@ class GCNHead(nn.Module):
         self.node_dim = node_dim
         self.n_boxes = n_boxes
         self.config = config
-        self.device = config.device
+        # self.device = config.device
         self.fmap_dims = {'conv4_3': 38,
                           'conv7': 19,
                           'conv8_2': 10,
@@ -232,6 +232,7 @@ class GCNHead(nn.Module):
         self.decoder_cls = nn.Linear(self.n_points * self.node_dim, self.n_classes)
         self.decoder_reg = nn.Linear(self.n_points * self.node_dim, self.n_points * 2)
         self.adjacency_mat, self.degree_matrix = self.create_graph(self.n_points)  # Both are 9x9 matrix
+        # self.adjacency_mat, self.degree_matrix = adj_mat, degree_mat
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -260,16 +261,17 @@ class GCNHead(nn.Module):
                 count += 1
 
         adj_mat = adj_mat_half + torch.transpose(adj_mat_half, 0, 1) - torch.eye(n_nodes)
+        # adj_mat = nn.Parameter(adj_mat)
         deg_mat = torch.diag(adj_mat.sum(dim=1) ** -1)
         # print(adj_mat.data)
         # print(deg_mat.data)
         # exit()
-
-        return adj_mat.to(self.device), deg_mat.to(self.device)
+        # return adj_mat, deg_mat
+        return adj_mat.to(self.config.device), deg_mat.to(self.config.device)
 
     def forward(self, x):
         batch_size = x.size(0)
-        encoded_feats = Func.mish(self.encoder(x)).permute(0, 2, 3, 1).contiguous()  # bs, feat, feat, 4 * 9 * 16
+        encoded_feats = Func.mish(self.encoder(x)).permute(0, 2, 3, 1).contiguous()  # bs, feat, feat, 4 * 9 * 32
         graph_feat = torch.matmul(torch.matmul(encoded_feats.view(batch_size, -1, self.node_dim, self.n_points),
                                                self.adjacency_mat.unsqueeze(0)), self.degree_matrix.unsqueeze(0))
         # print(graph_feat.size())
@@ -302,7 +304,9 @@ class PredictionConvolutions(nn.Module):
         self.n_points = n_points
         self.node_dim = node_dim
         self.config = config
-        self.device = config.device
+        # self.device = config.device
+        # self.adj_mat = adj_mat
+        # self.degree_mat = degree_mat
 
         # Number of prior-boxes we are considering per position in each feature map
         self.sigmoid = nn.Sigmoid()
@@ -318,14 +322,25 @@ class PredictionConvolutions(nn.Module):
         self.node_conv10_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.node_conv11_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
 
-        self.loc_conv = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
-        # self.loc_conv7 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
-        # self.loc_conv8 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
-        # self.loc_conv9 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
-        # self.loc_conv10 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
-        # self.loc_conv11 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv4 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv7 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv8 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv9 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv10 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
+        self.loc_conv11 = nn.Conv2d(256, self.n_boxes * 4, kernel_size=3, padding=1)
 
-        self.cls_conv = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim, self.config)
+        self.cls_conv4 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                 self.config)
+        self.cls_conv7 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                 self.config)
+        self.cls_conv8 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                 self.config)
+        self.cls_conv9 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                 self.config)
+        self.cls_conv10 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                  self.config)
+        self.cls_conv11 = GCNHead(256, self.n_classes, self.n_boxes, self.n_points, self.node_dim,
+                                  self.config)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -365,55 +380,52 @@ class PredictionConvolutions(nn.Module):
         conv10_2_feats = Func.mish(self.node_conv10_2(conv10_2_feats))
         conv11_2_feats = Func.mish(self.node_conv11_2(conv11_2_feats))
 
-        l_conv4_3 = self.loc_conv(conv4_3_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv4_3 = self.loc_conv4(conv4_3_feats).permute(0, 2, 3, 1).contiguous()
         l_conv4_3 = l_conv4_3.view(batch_size, -1, 4) * self.scale_param[0].view(1, 1, 1)
 
-        l_conv7 = self.loc_conv(conv7_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv7 = self.loc_conv7(conv7_feats).permute(0, 2, 3, 1).contiguous()
         l_conv7 = l_conv7.view(batch_size, -1, 4) * self.scale_param[1].view(1, 1, 1)
 
-        l_conv8_2 = self.loc_conv(conv8_2_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv8_2 = self.loc_conv8(conv8_2_feats).permute(0, 2, 3, 1).contiguous()
         l_conv8_2 = l_conv8_2.view(batch_size, -1, 4) * self.scale_param[2].view(1, 1, 1)
 
-        l_conv9_2 = self.loc_conv(conv9_2_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv9_2 = self.loc_conv9(conv9_2_feats).permute(0, 2, 3, 1).contiguous()
         l_conv9_2 = l_conv9_2.view(batch_size, -1, 4) * self.scale_param[3].view(1, 1, 1)
 
-        l_conv10_2 = self.loc_conv(conv10_2_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv10_2 = self.loc_conv10(conv10_2_feats).permute(0, 2, 3, 1).contiguous()
         l_conv10_2 = l_conv10_2.view(batch_size, -1, 4) * self.scale_param[4].view(1, 1, 1)
 
-        l_conv11_2 = self.loc_conv(conv11_2_feats).permute(0, 2, 3, 1).contiguous()
+        l_conv11_2 = self.loc_conv11(conv11_2_feats).permute(0, 2, 3, 1).contiguous()
         l_conv11_2 = l_conv11_2.view(batch_size, -1, 4) * self.scale_param[5].view(1, 1, 1)
 
         # Predict classes in localization boxes and features for each node
         # reg: batch, n_priors, n_points, 2
         # cls: batch, n_priors, n_classes
-        reg_conv4_3, cls_conv4_3 = self.cls_conv(conv4_3_feats)
+        reg_conv4_3, cls_conv4_3 = self.cls_conv4(conv4_3_feats)
         reg_conv4_3 = self.sigmoid(reg_conv4_3 *
                                    (self.aspect_param[0].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        # reg_conv4_3 = self.sigmoid(reg_conv4_3) * 2.0 - 1
 
-        reg_conv7, cls_conv7 = self.cls_conv(conv7_feats)
-        reg_conv7 = self.sigmoid(reg_conv7 *
-                                 (self.aspect_param[1].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        reg_conv7, cls_conv7 = self.cls_conv7(conv7_feats)
+        reg_conv7 = self.sigmoid(reg_conv7 * (self.aspect_param[1].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
-        reg_conv8_2, cls_conv8_2 = self.cls_conv(conv8_2_feats)
-        reg_conv8_2 = self.sigmoid(reg_conv8_2 *
-                                   (self.aspect_param[2].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        reg_conv8_2, cls_conv8_2 = self.cls_conv8(conv8_2_feats)
+        reg_conv8_2 = self.sigmoid(reg_conv8_2 * (self.aspect_param[2].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
-        reg_conv9_2, cls_conv9_2 = self.cls_conv(conv9_2_feats)
-        reg_conv9_2 = self.sigmoid(reg_conv9_2 *
-                                   (self.aspect_param[3].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        reg_conv9_2, cls_conv9_2 = self.cls_conv9(conv9_2_feats)
+        reg_conv9_2 = self.sigmoid(reg_conv9_2 * (self.aspect_param[3].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
-        reg_conv10_2, cls_conv10_2 = self.cls_conv(conv10_2_feats)
-        reg_conv10_2 = self.sigmoid(reg_conv10_2 *
-                                    (self.aspect_param[4].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        reg_conv10_2, cls_conv10_2 = self.cls_conv10(conv10_2_feats)
+        reg_conv10_2 = self.sigmoid(reg_conv10_2 * (self.aspect_param[4].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
-        reg_conv11_2, cls_conv11_2 = self.cls_conv(conv11_2_feats)
-        reg_conv11_2 = self.sigmoid(reg_conv11_2 *
-                                    (self.aspect_param[5].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
+        reg_conv11_2, cls_conv11_2 = self.cls_conv11(conv11_2_feats)
+        reg_conv11_2 = self.sigmoid(reg_conv11_2 * (self.aspect_param[5].view(1, 1, 2).repeat(1, 1, self.n_points))) * 2.0 - 1
 
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
         locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2, l_conv11_2],
                          dim=1)
-        # print(reg_conv4_3.size(), reg_conv7.size(), reg_conv8_2.size(), reg_conv9_2.size(), reg_conv10_2.size(), reg_conv11_2.size())
+        # print(reg_conv4_3.size(), reg_conv7.size(), reg_conv8_2.size(), reg_conv9_2.size(),
+        # reg_conv10_2.size(), reg_conv11_2.size())
         regs_offset = torch.cat([reg_conv4_3, reg_conv7, reg_conv8_2, reg_conv9_2, reg_conv10_2, reg_conv11_2], dim=1)
         classes_scores = torch.cat([cls_conv4_3, cls_conv7, cls_conv8_2, cls_conv9_2, cls_conv10_2, cls_conv11_2],
                                    dim=1)
@@ -432,10 +444,14 @@ class SSD300GCN(nn.Module):
         self.n_classes = n_classes
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
-        self.pred_convs = PredictionConvolutions(n_classes, config, n_points=9, node_dim=16)
+        self.n_points = 9
+        self.node_dim = 32
+        # self.adjacency_mat, self.degree_matrix = self.create_graph(self.n_points)  # Both are 9x9 matrix
+        self.pred_convs = PredictionConvolutions(n_classes, config, n_points=self.n_points, node_dim=self.node_dim)
         self.n_points = self.pred_convs.n_points
         self.node_dim = self.pred_convs.node_dim
-        self.shape_weight = nn.Parameter(data=torch.ones(1, 1, 4) * 0.5, requires_grad=True)
+        self.shape_weight = nn.Parameter(data=torch.zeros(1, 1, 4), requires_grad=False)
+        # self.reg_weight = nn.Parameter(data=torch.ones(1, 1, 4), requires_grad=True)
 
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
@@ -468,14 +484,16 @@ class SSD300GCN(nn.Module):
         locs, regs_offset, classes_scores = self.pred_convs(conv4_3_feats, conv7_feats, conv8_2_feats,
                                                             conv9_2_feats, conv10_2_feats,
                                                             conv11_2_feats)
-        predicted_points = self.offset2points(regs_offset)
-        bbox_from_shape = self.point2bbox(predicted_points)
-        bbox_from_reg = torch.zeros(bbox_from_shape.size()).to(self.device)
+
+        bbox_from_reg = torch.zeros(locs.size()).to(self.device)
         for i in range(bbox_from_reg.size(0)):
             bbox_from_reg[i] = cxcy_to_xy(gcxgcy_to_cxcy(locs[i], self.priors_cxcy))
 
+        predicted_points = self.offset2points(regs_offset)
+        bbox_from_shape = self.point2bbox(predicted_points)
+
         # leverage the prediction on both predicted offsets and shapes
-        final_bbox = bbox_from_shape * self.shape_weight.detach() + bbox_from_reg * (1 - self.shape_weight)
+        final_bbox = bbox_from_shape * self.shape_weight + bbox_from_reg * (1. - self.shape_weight)
         # final_bbox = bbox_from_reg
 
         return final_bbox, classes_scores, predicted_points
@@ -499,6 +517,23 @@ class SSD300GCN(nn.Module):
                            self.priors_cxcy[:, :2].view(1, -1, 1, 2)
 
         return predicted_points
+
+    def create_graph(self, n_nodes):
+        # [1.0, 0.5, 0.25, 0.125, 0.0625, 0.125, 0.25, 0.5] for 9 nodes
+        edge_len = [0.5 ** min(i, n_nodes - i) for i in range(n_nodes)]
+
+        adj_mat_half = torch.zeros((n_nodes, n_nodes))
+        for i in range(n_nodes):
+            count = 0
+            for j in range(i, n_nodes):
+                adj_mat_half[i, j] = edge_len[count]
+                count += 1
+
+        adj_mat = adj_mat_half + torch.transpose(adj_mat_half, 0, 1) - torch.eye(n_nodes)
+        adj_mat = nn.Parameter(adj_mat)
+        deg_mat = torch.diag(adj_mat.sum(dim=1) ** -1)
+
+        return adj_mat.to(self.device), deg_mat.to(self.device)
 
     def create_prior_boxes(self):
         """

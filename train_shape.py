@@ -202,6 +202,10 @@ def main():
         config.tb_logger.add_scalar('learning_rate', epoch)
 
         # evaluate(test_loader, model, optimizer, config=config)
+        # save_checkpoint(epoch, model, optimizer,
+        #                 name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
+        #                                                                    config.model['arch'].lower(),
+        #                                                                    config.data_name.lower(), epoch))
 
         train(train_loader=train_loader,
               model=model,
@@ -212,7 +216,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -243,7 +247,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     :param optimizer: optimizer
     :param epoch: epoch number
     """
-
+    torch.cuda.empty_cache()
     model.train()  # training mode enables dropout
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
@@ -307,9 +311,9 @@ def evaluate(test_loader, model, optimizer, config):
     :param test_loader: DataLoader for test data
     :param model: model
     """
-
+    torch.cuda.empty_cache()
     # Make sure it's in eval mode
-    model.train()
+    model.eval()
 
     pp = pprint.PrettyPrinter()
 
