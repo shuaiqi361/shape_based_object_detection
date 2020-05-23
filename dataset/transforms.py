@@ -446,7 +446,7 @@ def transform_richer(image, boxes, labels, split, config):
         return new_image, new_boxes, new_labels
 
     # Resize image
-    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
+    new_image, new_boxes = resize_keep(new_image, new_boxes, test_size, return_percent_coords=return_percent_coords)
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)

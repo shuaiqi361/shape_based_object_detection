@@ -73,7 +73,7 @@ def main():
 
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
-    input_size = (int(config.model['input_size']), int(config.model['input_size']))
+    # input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
@@ -191,8 +191,8 @@ def main():
 
     epochs = iterations // (len(train_dataset) // config.internal_batchsize)
 
-    decay_lr_at = [it // (len(train_dataset) // config.internal_batchsize) for it in
-                   decay_lr_at]  # calculate epoch to decay
+    # decay_lr_at = [it // (len(train_dataset) // config.internal_batchsize) for it in
+    #                decay_lr_at]  # calculate epoch to decay
     print('total train epochs: ', epochs, ' training starts ......')
     str_print = 'Dataset size: {}'.format(len(train_dataset))
     config.logger.info(str_print)

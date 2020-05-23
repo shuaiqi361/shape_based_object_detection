@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss
+from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
 from .modules import mish, AdaptivePooling, AttentionHead, AttentionHeadSplit
 
@@ -335,7 +335,8 @@ class MultiBoxPANetLoss(nn.Module):
         self.Iou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.SoftCE = LabelSmoothingLoss(classes=self.n_classes, smoothing=0.1, reduce=False)
-        self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=0.25, config=self.config)
+        # self.Focal_loss = SigmoidFocalLoss(gamma=2., alpha=0.25, config=self.config)
+        self.Focal_loss = focal_loss
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
