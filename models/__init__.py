@@ -4,6 +4,7 @@ from .RetinaNet import resnet50, resnet101, RetinaFocalLoss
 from .RefineDet512 import RefineDet512, RefineDetLoss
 from .FCOSDet import resnet50_fcos, resnet101_fcos, FCOSLoss
 from .SSD_PANet import SSDPANet, MultiBoxPANetLoss
+from .RefineBOF import RefineDetBof, RefineDetBofLoss
 
 
 def model_entry(config):
@@ -31,6 +32,9 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'PANET':
         print('Loading PANET_FPN with VGG-16 backbone ......')
         return SSDPANet(config=config), MultiBoxPANetLoss
+    elif config.model['arch'].upper() == 'REFINEDETBOF':
+        print('Loading RefineDet with VGG-16 backbone, Bof augmented ......')
+        return RefineDetBof(config['n_classes'], config=config), RefineDetBofLoss
     else:
         print('Try other models.')
         raise NotImplementedError

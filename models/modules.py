@@ -35,7 +35,7 @@ class AdaptivePooling(nn.Module):
         self.conv_astrous3 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=5, dilation=5)
 
         self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
-        self.transition = nn.Conv2d(128 * 3, self.outplane, kernel_size=1)
+        self.transition = nn.Conv2d(128, self.outplane, kernel_size=1)
         self.act = Mish()
 
     def forward(self, x):
@@ -43,7 +43,8 @@ class AdaptivePooling(nn.Module):
         astrous2 = self.conv_astrous2(x)
         astrous3 = self.conv_astrous3(x)
         # print(astrous1.size(), astrous2.size(), astrous3.size())
-        feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
+        # feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
+        feat = astrous1 + astrous2 + astrous3
         canonical_feat = self.pool(self.act(feat))
 
         feat = self.transition(canonical_feat)

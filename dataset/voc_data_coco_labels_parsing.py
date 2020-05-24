@@ -10,7 +10,8 @@ voc_labels_coco_dict = {'aeroplane': 'airplane', 'bicycle': 'bicycle', 'bird': '
                         'sheep': 'sheep', 'sofa': 'couch', 'train': 'train', 'tvmonitor': 'tv'}
 
 # Label map (use COCO label map, VOC is a subset, so fit)
-coco_root_path = '/home/keyi/research/data/COCO17'
+# coco_root_path = '/home/keyi/research/data/COCO17'
+coco_root_path = '/home/keyi/Documents/Data/COCO_17'
 dataType = 'train2017'
 annFile = '{}/annotations/instances_{}.json'.format(coco_root_path, dataType)
 coco = COCO(annFile)

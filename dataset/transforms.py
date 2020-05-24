@@ -481,7 +481,7 @@ def bof_augment(images, boxes, labels, config):
         # temp_image[temp_image == 0] = torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)
 
         new_images.append(temp_image)
-        new_boxes.append(temp_boxes)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
         temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
@@ -490,7 +490,7 @@ def bof_augment(images, boxes, labels, config):
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
         new_labels.append(labels[0])
-        new_boxes.append(temp_boxes)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
 
     if 'mosaic' in operation_list and random.random() < 0.5:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
@@ -500,7 +500,7 @@ def bof_augment(images, boxes, labels, config):
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
-        new_boxes.append(temp_boxes)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
         temp_image, temp_boxes = resize(images[2], boxes[2], dims=(resize_dim, resize_dim),
@@ -509,7 +509,7 @@ def bof_augment(images, boxes, labels, config):
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
         new_labels.append(labels[2])
-        new_boxes.append(temp_boxes)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
 
     return new_images, new_boxes, new_labels
 

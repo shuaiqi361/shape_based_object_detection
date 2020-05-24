@@ -579,13 +579,13 @@ class ODMConvolutions(nn.Module):
         return locs, classes_scores
 
 
-class RefineDet512(nn.Module):
+class RefineDetBof(nn.Module):
     """
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
     def __init__(self, n_classes, config):
-        super(RefineDet512, self).__init__()
+        super(RefineDetBof, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
         self.base = VGGBase()
@@ -701,7 +701,7 @@ class RefineDet512(nn.Module):
         return prior_boxes
 
 
-class RefineDetLoss(nn.Module):
+class RefineDetBofLoss(nn.Module):
     """
     The RetinaFocalLoss, a loss function for object detection from RetinaNet.
     This is a combination of:
@@ -710,7 +710,7 @@ class RefineDetLoss(nn.Module):
     """
 
     def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.01):
-        super(RefineDetLoss, self).__init__()
+        super(RefineDetBofLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
@@ -721,9 +721,11 @@ class RefineDetLoss(nn.Module):
         self.config = config
         self.theta = theta
 
-        self.arm_loss = SmoothL1Loss(reduction='mean')
-        self.odm_loss = SmoothL1Loss(reduction='mean')
+        # self.arm_loss = SmoothL1Loss(reduction='mean')
+        # self.odm_loss = SmoothL1Loss(reduction='mean')
         # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        self.arm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.1, reduce=False)
         # self.Focal_loss = focal_loss
@@ -746,7 +748,9 @@ class RefineDetLoss(nn.Module):
         n_priors = self.priors_cxcy.size(0)
         n_classes = arm_scores.size(2)  # should be 2
 
-        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
         # For each image
@@ -789,14 +793,21 @@ class RefineDetLoss(nn.Module):
             true_classes[i] = label_for_each_prior
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
-            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
+            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
+            true_locs[i] = boxes[i][object_for_each_prior]
+            decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (non-background, binary)
         positive_priors = true_classes > 0
         n_positives = positive_priors.sum(dim=1)  # (N)
         # LOCALIZATION LOSS
-        loc_loss = self.arm_loss(arm_locs[positive_priors].view(-1, 4),
-                                 true_locs_encoded[positive_priors].view(-1, 4))
+        # smooth l1
+        # loc_loss = self.arm_loss(arm_locs[positive_priors].view(-1, 4),
+        #                          true_locs_encoded[positive_priors].view(-1, 4))
+
+        # IOU loss
+        loc_loss = self.arm_loss(decoded_locs[positive_priors].view(-1, 4),
+                                 true_locs[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
@@ -846,8 +857,9 @@ class RefineDetLoss(nn.Module):
 
         # Calculate ARM loss: offset smoothl1 + binary classification loss
         decoded_arm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
         # For each image
@@ -889,11 +901,12 @@ class RefineDetLoss(nn.Module):
             true_classes[i] = label_for_each_prior
 
             # Encode center-size object coordinates into the form we regressed predicted boxes to
-            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
-                                                  xy_to_cxcy(decoded_arm_locs[i]))
+            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
+            #                                       xy_to_cxcy(decoded_arm_locs[i]))
             # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
-            # true_locs[i] = boxes[i][object_for_each_prior]
-            # decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
+            true_locs[i] = boxes[i][object_for_each_prior]
+            # print(odm_locs.size(), decoded_arm_locs.size())
+            decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], xy_to_cxcy(decoded_arm_locs[i])))
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
@@ -906,10 +919,10 @@ class RefineDetLoss(nn.Module):
         positive_priors = positive_priors & ~easy_negative_idx
 
         # LOCALIZATION LOSS
-        # loc_loss = self.Diou_loss(decoded_odm_locs[positive_priors].view(-1, 4),
-        #                           true_locs[positive_priors].view(-1, 4))
-        loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
-                                 true_locs_encoded[positive_priors].view(-1, 4))
+        loc_loss = self.odm_loss(decoded_odm_locs[positive_priors].view(-1, 4),
+                                 true_locs[positive_priors].view(-1, 4))
+        # loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
+        #                          true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image

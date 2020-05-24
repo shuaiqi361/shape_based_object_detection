@@ -72,7 +72,8 @@ def main():
 
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
-    input_size = (int(config.model['input_size']), int(config.model['input_size']))
+    if not isinstance(config.model['input_size'], list):
+        input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
     # Learning parameters
     if args.recover:
@@ -252,6 +253,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
         # Bag of Freebies, image mixup and mosaic
         images, boxes, labels = bof_augment(images, boxes, labels, config)
+        # print(boxes, labels)
 
         # Move to default device
         images = torch.stack(images, dim=0).to(config.device)
@@ -301,7 +303,8 @@ def evaluate(test_loader, model, optimizer, config):
     """
 
     # Make sure it's in eval mode
-    model.train()
+    torch.cuda.empty_cache()
+    model.eval()
 
     pp = pprint.PrettyPrinter()
 
