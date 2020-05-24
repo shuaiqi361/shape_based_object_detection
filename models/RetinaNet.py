@@ -19,7 +19,7 @@ model_urls = {
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=160):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
@@ -77,7 +77,7 @@ class PyramidFeatures(nn.Module):
 
 
 class RegressionModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors, feature_size=256):
+    def __init__(self, num_features_in, num_anchors, feature_size=160):
         super(RegressionModel, self).__init__()
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
@@ -127,7 +127,7 @@ class RegressionModel(nn.Module):
 
 
 class ClassificationModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors, num_classes, feature_size=256):
+    def __init__(self, num_features_in, num_anchors, num_classes, feature_size=160):
         super(ClassificationModel, self).__init__()
 
         self.num_classes = num_classes
@@ -214,8 +214,8 @@ class RetinaNet(nn.Module):
         self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(256, num_anchors=9)
-        self.classificationModel = ClassificationModel(256, num_anchors=9, num_classes=n_classes)
+        self.regressionModel = RegressionModel(160, num_anchors=6)
+        self.classificationModel = ClassificationModel(160, num_anchors=6, num_classes=n_classes)
 
         # parameters initialization
         # def initialize_layer(layer):
@@ -274,7 +274,7 @@ class RetinaNet(nn.Module):
                       'c5': 0.16,
                       'c6': 0.32,
                       'c7': 0.64}
-        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        scale_factor = [2. ** 0, 2. ** (1 / 3.)]
         aspect_ratios = {'c3': [1., 2., 0.5],
                          'c4': [1., 2., 0.5],
                          'c5': [1., 2., 0.5],
