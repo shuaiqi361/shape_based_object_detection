@@ -174,14 +174,14 @@ class PathAggregateFeatures(nn.Module):
         self.N7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
         self.mish = Mish()
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.normal_(m.weight.data)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias.data, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         nn.init.normal_(m.weight.data)
+        #         if m.bias is not None:
+        #             nn.init.constant_(m.bias.data, 0)
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
 
     def forward(self, c3, c4, c5):
         P5_x = self.P5_1(c5)  # [N, 1024, 16, 16]
@@ -224,38 +224,38 @@ class PredictionHead(nn.Module):
 
         self.n_classes = n_classes
         self.n_boxes = {
-            'N3': 3,
-            'N4': 3,
-            'N5': 3,
-            'N6': 3,
-            'N7': 3
+            'N3': 9,
+            'N4': 9,
+            'N5': 9,
+            'N6': 9,
+            'N7': 9
         }
 
         if mode.upper() == 'FULL':
             self.det_N3 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N3'] * 4,
-                                        cls_out=self.n_boxes['N3'] * self.n_classes)
-            # self.det_N4 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
-            #                             cls_out=self.n_boxes['N4'] * self.n_classes)
-            # self.det_N5 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
-            #                             cls_out=self.n_boxes['N5'] * self.n_classes)
-            # self.det_N6 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
-            #                             cls_out=self.n_boxes['N6'] * self.n_classes)
-            # self.det_N7 = AttentionHead(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
-            #                             cls_out=self.n_boxes['N7'] * self.n_classes)
+                                        cls_out=self.n_boxes['N3'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N4 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N4'] * 4,
+                                        cls_out=self.n_boxes['N4'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N5 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N5'] * 4,
+                                        cls_out=self.n_boxes['N5'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N6 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N6'] * 4,
+                                        cls_out=self.n_boxes['N6'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N7 = AttentionHead(inplanes=128, reg_out=self.n_boxes['N7'] * 4,
+                                        cls_out=self.n_boxes['N7'] * self.n_classes, n_classes=self.n_classes)
         else:
             self.det_N3 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N3'] * 4,
-                                             cls_out=self.n_boxes['N3'] * self.n_classes)
-            # self.det_N4 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N4'] * 4,
-            #                                  cls_out=self.n_boxes['N4'] * self.n_classes)
-            # self.det_N5 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N5'] * 4,
-            #                                  cls_out=self.n_boxes['N5'] * self.n_classes)
-            # self.det_N6 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N6'] * 4,
-            #                                  cls_out=self.n_boxes['N6'] * self.n_classes)
-            # self.det_N7 = AttentionHeadSplit(inplanes=256, reg_out=self.n_boxes['N7'] * 4,
-            #                                  cls_out=self.n_boxes['N7'] * self.n_classes)
+                                             cls_out=self.n_boxes['N3'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N4 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N4'] * 4,
+                                             cls_out=self.n_boxes['N4'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N5 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N5'] * 4,
+                                             cls_out=self.n_boxes['N5'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N6 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N6'] * 4,
+                                             cls_out=self.n_boxes['N6'] * self.n_classes, n_classes=self.n_classes)
+            self.det_N7 = AttentionHeadSplit(inplanes=128, reg_out=self.n_boxes['N7'] * 4,
+                                             cls_out=self.n_boxes['N7'] * self.n_classes, n_classes=self.n_classes)
 
         # Initialize convolutions' parameters
-        self.init_conv2d()
+        # self.init_conv2d()
         self.mish = Mish()
 
     def init_conv2d(self):
@@ -271,10 +271,10 @@ class PredictionHead(nn.Module):
     def forward(self, features):
         n3, n4, n5, n6, n7 = features
         loc_n3, cls_n3 = self.det_N3(n3)
-        loc_n4, cls_n4 = self.det_N3(n4)
-        loc_n5, cls_n5 = self.det_N3(n5)
-        loc_n6, cls_n6 = self.det_N3(n6)
-        loc_n7, cls_n7 = self.det_N3(n7)
+        loc_n4, cls_n4 = self.det_N4(n4)
+        loc_n5, cls_n5 = self.det_N5(n5)
+        loc_n6, cls_n6 = self.det_N6(n6)
+        loc_n7, cls_n7 = self.det_N7(n7)
 
         locs = torch.cat([loc_n3, loc_n4, loc_n5, loc_n6, loc_n7], dim=1).contiguous()
         classes_scores = torch.cat([cls_n3, cls_n4, cls_n5, cls_n6, cls_n7], dim=1).contiguous()
@@ -300,16 +300,13 @@ class SSDPANet(nn.Module):
 
     def forward(self, image):
         conv4_3_feats, conv5_3_feats, conv7_feats = self.base(image)
-        torch.cuda.empty_cache()
         # (N, 512, 64, 64), (N, 512, 32, 32), (N, 1024, 16, 16)
 
         norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
         conv4_3_feats = conv4_3_feats / norm  # (N, 512, 64, 64)
         conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
-        torch.cuda.empty_cache()
 
         features = self.fpn_convs(conv4_3_feats, conv5_3_feats, conv7_feats)
-        torch.cuda.empty_cache()
 
         locs, scores = self.pred_convs(features)
 
@@ -331,8 +328,8 @@ class SSDPANet(nn.Module):
                       'c5': 0.16,
                       'c6': 0.32,
                       'c7': 0.64}
-        # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
-        scale_factor = [1.0]
+        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
+        # scale_factor = [1.0]
         aspect_ratios = {'c3': [1., 2., 0.5],
                          'c4': [1., 2., 0.5],
                          'c5': [1., 2., 0.5],
@@ -398,7 +395,7 @@ class MultiBoxPANetLoss(nn.Module):
         n_priors = self.priors_cxcy.size(0)
         n_classes = predicted_scores.size(2)
 
-        print(n_priors, predicted_locs.size(), predicted_scores.size())
+        # print(n_priors, predicted_locs.size(), predicted_scores.size())
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
         decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)  # (N, 22536, 4)

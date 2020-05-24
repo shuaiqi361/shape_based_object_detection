@@ -278,6 +278,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
         # Bag of Freebies, image mixup and mosaic
         images, boxes, labels = bof_augment(images, boxes, labels, config)
+        # print(boxes, labels)
 
         # Move to default device
         images = torch.stack(images, dim=0).to(config.device)

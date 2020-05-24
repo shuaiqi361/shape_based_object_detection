@@ -468,7 +468,7 @@ def bof_augment(images, boxes, labels, config):
     resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
     # print('boxes from loader', boxes)
 
-    if 'mixup' in operation_list and random.random() < 0.5:
+    if 'mixup' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
 
@@ -492,7 +492,7 @@ def bof_augment(images, boxes, labels, config):
         new_labels.append(labels[0])
         new_boxes.append(temp_boxes.clamp_(0, 1))
 
-    if 'mosaic' in operation_list and random.random() < 0.5:
+    if 'mosaic' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
         # temp_boxes = torch.cat(temp_boxes, dim=0)
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),

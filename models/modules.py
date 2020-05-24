@@ -53,7 +53,7 @@ class AdaptivePooling(nn.Module):
 
 
 class AttentionHead(nn.Module):
-    def __init__(self, inplanes, reg_out, cls_out):
+    def __init__(self, inplanes, reg_out, cls_out, n_classes):
         super(AttentionHead, self).__init__()
         self.reg_out = reg_out
         self.cls_out = cls_out
@@ -62,7 +62,7 @@ class AttentionHead(nn.Module):
         self.reg_conv_out = nn.Conv2d(inplanes, reg_out, stride=1, kernel_size=3, padding=1)
         self.cls_conv = nn.Conv2d(inplanes, inplanes, stride=1, kernel_size=3, padding=1)
         self.cls_conv_out = nn.Conv2d(inplanes, cls_out, stride=1, kernel_size=3, padding=1)
-        self.n_classes = cls_out
+        self.n_classes = n_classes
 
     def forward(self, x):
         n_channels = x.size(1)
@@ -79,7 +79,7 @@ class AttentionHead(nn.Module):
 
 
 class AttentionHeadSplit(nn.Module):
-    def __init__(self, inplanes, reg_out, cls_out):
+    def __init__(self, inplanes, reg_out, cls_out, n_classes):
         super(AttentionHeadSplit, self).__init__()
         self.reg_out = reg_out
         self.cls_out = cls_out
@@ -89,7 +89,8 @@ class AttentionHeadSplit(nn.Module):
         self.reg_conv_out = nn.Conv2d(self.n_channels, reg_out, stride=1, kernel_size=3, padding=1)
         self.cls_conv = nn.Conv2d(self.n_channels, self.n_channels, stride=1, kernel_size=3, padding=1)
         self.cls_conv_out = nn.Conv2d(self.n_channels, cls_out, stride=1, kernel_size=3, padding=1)
-        self.n_classes = cls_out
+        self.n_classes = n_classes
+        self.mish = Mish()
 
     def forward(self, x):
         assert self.inplanes == x.size(1)
