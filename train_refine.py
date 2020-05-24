@@ -128,7 +128,7 @@ def main():
         train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False)
+                                                   pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
