@@ -13,12 +13,13 @@ import argparse
 from easydict import EasyDict
 import json
 
-from scheduler import adjust_learning_rate
+from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
 from utils import create_logger, save_checkpoint
-from models.utils import detect, detect_objects
+from models.utils import detect
 from metrics import AverageMeter, calculate_mAP
+from dataset.transforms import bof_augment
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
 parser.add_argument('--config', default='', type=str)
@@ -122,6 +123,16 @@ def main():
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
+    elif config.data_name.upper() == 'VOCOCO':
+        train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=False)
+        test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
+
     else:
         raise NotImplementedError
 
@@ -167,6 +178,7 @@ def main():
 
     # Epochs
     best_mAP = -1.
+    config.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, config.optimizer['min_lr'])
 
     for epoch in range(start_epoch, epochs):
         # Decay learning rate at particular epochs
@@ -183,8 +195,10 @@ def main():
               optimizer=optimizer,
               epoch=epoch, config=config)
 
+        config.scheduler.step()
+
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 3:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -215,6 +229,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     :param optimizer: optimizer
     :param epoch: epoch number
     """
+    torch.cuda.empty_cache()
     model.train()  # training mode enables dropout
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
@@ -223,14 +238,23 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
     start = time.time()
     optimizer.zero_grad()
-
+    if epoch == 0 and config.optimizer['warm_up']:
+        lr_warmup = WarmUpScheduler(config.optimizer['base_lr'], config.optimizer['warm_up_steps'], optimizer)
     # Batches
 
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         data_time.update(time.time() - start)
+        if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
+            # warm_up_learning_rate(optimizer, rate=config.optimizer['warm_up_rate'])
+            lr_warmup.update()
+
+        data_time.update(time.time() - start)
+
+        # Bag of Freebies, image mixup and mosaic
+        images, boxes, labels = bof_augment(images, boxes, labels, config)
 
         # Move to default device
-        images = images.to(config.device)  # (batch_size (N), 3, 300, 300)
+        images = torch.stack(images, dim=0).to(config.device)
         boxes = [b.to(config.device) for b in boxes]
         labels = [l.to(config.device) for l in labels]
 
@@ -293,7 +317,7 @@ def evaluate(test_loader, model, optimizer, config):
     with torch.no_grad():
         # Batches
         for i, (images, boxes, labels, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
-            images = images.to(config.device)
+            images = torch.stack(images, dim=0).to(config.device)
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
             difficulties = [d.to(config.device) for d in difficulties]
@@ -302,7 +326,7 @@ def evaluate(test_loader, model, optimizer, config):
             time_start = time.time()
             _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(images)
 
-            if config.data_name.upper() == 'COCO':
+            if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
                     detect(predicted_locs,
                            predicted_scores,
@@ -343,7 +367,9 @@ def evaluate(test_loader, model, optimizer, config):
     # # added to resume training
     # model.train()
 
-    str_print = 'EVAL: Mean Average Precision {0:.3f}, avg speed {1:.2f} Hz'.format(mAP, 1. / np.mean(detect_speed))
+    str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
+                'avg speed {1:.2f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
+                                                          config.scheduler.get_lr()[1])
     config.logger.info(str_print)
 
     del predicted_locs, predicted_scores, boxes, labels, images, difficulties
