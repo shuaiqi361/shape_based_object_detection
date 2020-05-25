@@ -16,9 +16,9 @@ class Mish(nn.Module):
         mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
         See additional documentation for mish class.
     """
-    def forward(self, input):
+    def forward(self, inputs):
 
-        return input * torch.tanh(F.softplus(input))
+        return inputs * torch.tanh(F.softplus(inputs))
 
 
 class AdaptivePooling(nn.Module):
@@ -43,8 +43,8 @@ class AdaptivePooling(nn.Module):
         astrous2 = self.conv_astrous2(x)
         astrous3 = self.conv_astrous3(x)
         # print(astrous1.size(), astrous2.size(), astrous3.size())
-        # feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
-        feat = astrous1 + astrous2 + astrous3
+        feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
+        # feat = astrous1 + astrous2 + astrous3
         canonical_feat = self.pool(self.act(feat))
 
         feat = self.transition(canonical_feat)
