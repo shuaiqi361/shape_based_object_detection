@@ -413,7 +413,7 @@ def transform_richer(image, boxes, labels, split, config):
     mean = config.model['mean']
     std = config.model['std']
 
-    input_sizes = config.model['input_size']
+    input_sizes = config.model['input_size']  # a list of input sizes
     test_size = config.model['test_size']
     resize_dim = (test_size, test_size)
 
@@ -426,25 +426,27 @@ def transform_richer(image, boxes, labels, split, config):
         # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
         new_image = photometric_distort(new_image)
 
-        # # Convert PIL image to Torch tensor
-        # new_image = FT.to_tensor(new_image)
-        #
-        # # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
-        # # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
-        # if random.random() < 0.5 and 'expand' in operation_list:
-        #     new_image, new_boxes = expand(new_image, boxes, filler=mean)
-        #
-        # # Randomly crop image (zoom in)
-        # if random.random() < 0.5 and 'random_crop' in operation_list:
-        #     new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
-        #
-        # # Convert Torch tensor to PIL image
-        # new_image = FT.to_pil_image(new_image)
+        if 'expand' in operation_list or 'random_crop' in operation_list:
+            # Convert PIL image to Torch tensor
+            new_image = FT.to_tensor(new_image)
+
+            # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
+            # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+            if random.random() < 0.5 and 'expand' in operation_list:
+                new_image, new_boxes = expand(new_image, boxes, filler=mean)
+
+            # Randomly crop image (zoom in)
+            if random.random() < 0.5 and 'random_crop' in operation_list:
+                new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
+
+            # Convert Torch tensor to PIL image
+            new_image = FT.to_pil_image(new_image)
+
         # Flip image with a 50% chance
         if random.random() < 0.5:
             new_image, new_boxes = flip(new_image, new_boxes)
 
-        return new_image, new_boxes, new_labels
+        return new_image, new_boxes, new_labels  # return PIL images
 
     # Resize image
     new_image, new_boxes = resize(new_image, new_boxes, dims=(test_size, test_size), return_percent_coords=return_percent_coords)
@@ -460,12 +462,19 @@ def transform_richer(image, boxes, labels, split, config):
 
 def bof_augment(images, boxes, labels, config):
     operation_list = config.model['operation_list']
-    assert len(labels) == 4  # hard code 4 images per batch, return 2 images, the box is a list of 4 tensors, each tensor contains a 2-d vetor with many bboxes
+    assert len(labels) == 4  # hard code 4 images per batch, return 2 images,
+    # the box is a list of 4 tensors, each tensor contains a 2-d vetor with many bboxes
     new_images = list()
     new_labels = list()
     new_boxes = list()
     resize_dims = config.model['input_size']
-    resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
+    if 'random_shape' in operation_list:
+        resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
+    else:
+        if isinstance(resize_dims, list):
+            resize_dim = resize_dims[0]
+        else:
+            resize_dim = resize_dims
     # print('boxes from loader', boxes)
 
     if 'mixup' in operation_list and random.random() < 0.25:

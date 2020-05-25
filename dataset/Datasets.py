@@ -307,8 +307,8 @@ class BaseModelVOCOCODataset(Dataset):
 
         # Apply transformations
         image, boxes, labels = transform_richer(image, boxes, labels,
-                                         split=self.split,
-                                         config=self.config)
+                                                split=self.split,
+                                                config=self.config)
 
         return image, boxes, labels, ids, difficulties
 
