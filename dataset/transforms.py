@@ -485,6 +485,9 @@ def bof_augment(images, boxes, labels, config):
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
+        temp_image = torch.where(temp_image == 0,
+                                 (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(temp_image),
+                                 temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
 
         # fill the background with no mixup with mean pixels
