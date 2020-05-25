@@ -477,31 +477,38 @@ def bof_augment(images, boxes, labels, config):
             resize_dim = resize_dims
     # print('boxes from loader', boxes)
 
-    if 'mixup' in operation_list and random.random() < 0.25:
+    if 'mixup' in operation_list and random.random() < 0.9:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
 
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
-        temp_image = FT.to_tensor(temp_image)
-        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        # temp_image = FT.to_tensor(temp_image)
+        # temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
 
         # fill the background with no mixup with mean pixels
         # temp_image[temp_image == 0] = torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)
 
-        new_images.append(temp_image)
-        new_boxes.append(temp_boxes.clamp_(0, 1))
-        new_labels.append(temp_labels)
+        # new_images.append(temp_image)
+        # new_boxes.append(temp_boxes.clamp_(0, 1))
+        # new_labels.append(temp_labels)
     else:
         temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
                                         return_percent_coords=config.model['return_percent_coords'])
-        temp_image = FT.to_tensor(temp_image)
-        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
-        new_images.append(temp_image)
-        new_labels.append(labels[0])
-        new_boxes.append(temp_boxes.clamp_(0, 1))
+        # temp_image = FT.to_tensor(temp_image)
+        # temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        # new_images.append(temp_image)
+        # new_labels.append(labels[0])
+        # new_boxes.append(temp_boxes.clamp_(0, 1))
 
-    if 'mosaic' in operation_list and random.random() < 0.25:
+    # draw augmented images and bboxes
+    n_boxes = temp_boxes.size(0)
+    rect_coord = [int(temp_boxes[i] * resize_dim) for i in range(n_boxes)]
+    temp_image.rectangle(rect_coord)
+    temp_image.show()
+
+
+    if 'mosaic' in operation_list and random.random() < 0.9:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
         # temp_boxes = torch.cat(temp_boxes, dim=0)
         temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
