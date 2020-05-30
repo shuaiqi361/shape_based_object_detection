@@ -5,7 +5,7 @@ import torchvision
 from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
-from .modules import Mish, AdaptivePooling, Residual, ConvBNAct
+from .modules import Mish, AdaptivePooling, Residual, ConvBNAct, DualAdaptivePooling
 
 
 class DarkBlock(nn.Module):
@@ -61,13 +61,13 @@ class CSPDarknetBase(nn.Module):
         self.BN2 = nn.BatchNorm2d(128)
 
         self.DarkB1 = DarkBlock(128, 256, 1)
-        self.adap_pool = AdaptivePooling(256, 256, adaptive_size=128)   # (128, 128)
+        self.adap_pool = DualAdaptivePooling(256, 256, adaptive_size=128)   # (128, 128)
         
         self.DarkB2 = DarkBlock(256, 256, 4)  # (64, 64)
-        self.DarkB3 = DarkBlock(256, 512, 4)  # (32, 32)
-        self.DarkB4 = DarkBlock(512, 512, 4)  # (16, 16)
-        self.DarkB5 = DarkBlock(512, 1024, 3)  # (8, 8)
-        self.DarkB6 = DarkBlock(1024, 1024, 3)
+        self.DarkB3 = DarkBlock(256, 512, 6)  # (32, 32)
+        self.DarkB4 = DarkBlock(512, 512, 6)  # (16, 16)
+        self.DarkB5 = DarkBlock(512, 1024, 6)  # (8, 8)
+        self.DarkB6 = DarkBlock(1024, 1024, 4)
 
         self.mish = Mish()
 
@@ -77,13 +77,13 @@ class CSPDarknetBase(nn.Module):
         :param image: images, a tensor of dimensions (N, 3, 512, 512)
         :return: lower-level feature maps conv4_3 and conv7
         """
-        out = self.mish(self.BN1(self.conv1_1(image)))  # (N, 32, 512, 512)
-        out = self.mish(self.BN2(self.conv1_2(out)))  # (N, 32, 256, 256)
-        _, DB1_feats = self.DarkB1(out)  # (N, 128, 128, 128)
-        _, DB2_feats = self.DarkB2(DB1_feats)  # (N, 128, 64, 64)
-        DB3, DB3_feats = self.DarkB3(DB2_feats)  # (N, 128, 64, 64), (N, 256, 32, 32)
-        DB4, DB4_feats = self.DarkB4(DB3_feats)  # (N, 256, 32, 32), (N, 512, 16, 16)
-        DB5, DB5_feats = self.DarkB5(DB4_feats)  # (N, 512, 16, 16), (N, 512, 8, 8)
+        out = self.mish(self.BN1(self.conv1_1(image)))  # (N, 64, 512, 512)
+        out = self.mish(self.BN2(self.conv1_2(out)))  # (N, 128, 256, 256)
+        _, DB1_feats = self.DarkB1(out)  # (N, 256, 128, 128)
+        _, DB2_feats = self.DarkB2(self.adap_pool(DB1_feats))  # (N, 256, 64, 64)
+        DB3, DB3_feats = self.DarkB3(DB2_feats)  # (N, 256, 64, 64), (N, 512, 32, 32)
+        DB4, DB4_feats = self.DarkB4(DB3_feats)  # (N, 512, 32, 32), (N, 512, 16, 16)
+        DB5, DB5_feats = self.DarkB5(DB4_feats)  # (N, 512, 16, 16), (N, 1024, 8, 8)
         DB6, _ = self.DarkB6(DB5_feats)  # (N, 1024, 8, 8)
 
         return DB3, DB4, DB5, DB6
@@ -103,8 +103,8 @@ class TCBConvolutions(nn.Module):
 
         self.feat_channels = {'DB3': 128,
                               'DB4': 256,
-                              'DB5': 512,
-                              'DB6': 1024}
+                              'DB5': 256,
+                              'DB6': 512}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.tcb_conv4_3 = TCB(self.feat_channels['DB3'], self.feat_channels['DB4'], internal_channels)
@@ -258,8 +258,8 @@ class ARMConvolutions(nn.Module):
         self.n_classes = 2  # foreground and background
         self.feat_channels = {'DB3': 128,
                               'DB4': 256,
-                              'DB5': 512,
-                              'DB6': 1024}
+                              'DB5': 256,
+                              'DB6': 512}
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'DB3': 3,
@@ -378,8 +378,8 @@ class ODMConvolutions(nn.Module):
 
         self.feat_channels = {'DB3': 128,
                               'DB4': 256,
-                              'DB5': 512,
-                              'DB6': 1024}
+                              'DB5': 256,
+                              'DB6': 512}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)

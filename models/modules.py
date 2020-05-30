@@ -72,7 +72,7 @@ class Mish(nn.Module):
 
 class DualAdaptivePooling(nn.Module):
     def __init__(self, inplanes, outplanes=256, kernel_size=3, adaptive_size=64):
-        super(AdaptivePooling, self).__init__()
+        super(DualAdaptivePooling, self).__init__()
         self.inplane = inplanes
         self.outplane = outplanes
         self.kernel_size = kernel_size
