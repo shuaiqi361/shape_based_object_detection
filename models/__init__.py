@@ -7,6 +7,7 @@ from .SSD_PANet import SSDPANet, MultiBoxPANetLoss
 from .RefineBOF import RefineDetBof, RefineDetBofLoss
 from .RefineBOF2 import RefineDetBof2, RefineDetBofLoss2
 from .RefineBOFTraffic import RefineDetBofTraffic, RefineDetBofTrafficLoss
+from .DarkRefineDet import RefineDetDark, RefineDetDarkLoss
 
 
 def model_entry(config):
@@ -43,6 +44,9 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'REFINEDETBOF2':
         print('Loading RefineDet with VGG-16 backbone, Bof augmented v2 ......')
         return RefineDetBof2(config['n_classes'], config=config), RefineDetBofLoss2
+    elif config.model['arch'].upper() == 'REFINEDETDARK':
+        print('Loading RefineDet with customized CSPDarkNet53 ......')
+        return RefineDetDark(config['n_classes'], config=config), RefineDetDarkLoss
     else:
         print('Try other models.')
         raise NotImplementedError
