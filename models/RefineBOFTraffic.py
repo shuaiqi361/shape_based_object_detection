@@ -30,12 +30,12 @@ class VGGBase(nn.Module):
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         # self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.pool3 = AdaptivePooling(256, 256, adaptive_size=(54, 96))
+        self.pool3 = AdaptivePooling(256, 256, adaptive_size=(56, 96))
 
         self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
         self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.conv4_3 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)  # (27, 48)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)  # (28, 48)
 
         self.conv5_1 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.conv5_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
@@ -73,7 +73,7 @@ class VGGBase(nn.Module):
         out = self.mish(self.conv4_1(out))
         out = self.mish(self.conv4_2(out))
         out = self.mish(self.conv4_3(out))
-        conv4_3_feats = out  # (54, 96)
+        conv4_3_feats = out  # (56, 96)
         out = self.pool4(out)
 
         out = self.mish(self.conv5_1(out))
@@ -83,7 +83,7 @@ class VGGBase(nn.Module):
 
         out = self.mish(self.conv6(out))
 
-        conv7_feats = self.mish(self.conv7(out))  # (27, 48)
+        conv7_feats = self.mish(self.conv7(out))  # (28, 48)
 
         return conv4_3_feats, conv7_feats
 
@@ -170,13 +170,13 @@ class AuxiliaryConvolutions(nn.Module):
         :param conv7_feats: lower-level conv7 feature map, a tensor of dimensions (N, 1024, 32, 32)
         :return: higher-level feature maps conv8_2, conv9_2
         """
-        out = self.mish(self.conv8_1(conv7_feats))  # (N, 256, 27, 48)
+        out = self.mish(self.conv8_1(conv7_feats))  # (N, 256, 28, 48)
         out = self.mish(self.conv8_2(out))
         conv8_2_feats = out
 
-        out = self.mish(self.conv9_1(out))  # (N, 128, 13, 24)
+        out = self.mish(self.conv9_1(out))  # (N, 128, 14, 24)
         out = self.mish(self.conv9_2(out))
-        conv9_2_feats = out  # (N, 128, 6, 12)
+        conv9_2_feats = out  # (N, 128, 7, 12)
 
         # out = self.mish(self.conv10_1(out))  # (N, 128, 4, 4)
         # out = self.mish(self.conv10_2(out))
@@ -663,10 +663,10 @@ class RefineDetBofTraffic(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'conv4_3': [54, 96],
-                     'conv7': [27, 48],
-                     'conv8_2': [13, 24],
-                     'conv9_2': [6, 12]}
+        fmap_dims = {'conv4_3': [56, 96],
+                     'conv7': [28, 48],
+                     'conv8_2': [14, 24],
+                     'conv9_2': [7, 12]}
 
         obj_scales = {'conv4_3': 0.06,
                       'conv7': 0.15,
@@ -686,8 +686,8 @@ class RefineDetBofTraffic(nn.Module):
         for k, fmap in enumerate(fmaps):
             for i in range(fmap_dims[fmap][0]):
                 for j in range(fmap_dims[fmap][1]):
-                    cx = (j + 0.5) / fmap_dims[fmap]  # sliding center locations across the feature maps
-                    cy = (i + 0.5) / fmap_dims[fmap]
+                    cx = (j + 0.5) / fmap_dims[fmap][1]  # sliding center locations across the feature maps
+                    cy = (i + 0.5) / fmap_dims[fmap][0]
 
                     for ratio in aspect_ratios[fmap]:
                         for fac in scale_factor:

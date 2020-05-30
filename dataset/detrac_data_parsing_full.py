@@ -226,7 +226,7 @@ def create_data_lists_detrac(root_path, output_folder):
                 continue
             else:
                 for obj in objects:
-                    n_object += len(obj['boxes'])
+                    n_object += len(obj['bbox'])
 
             test_objects += objects
             test_images += image_frames_path
@@ -246,7 +246,9 @@ def create_data_lists_detrac(root_path, output_folder):
 if __name__ == '__main__':
     # root_path = '/home/keyi/research/data/DETRAC'
     # output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/DETRAC'
-    root_path = '/media/keyi/Data/Research/traffic/data/DETRAC'
-    output_folder = '/media/keyi/Data/Research/course_project/AdvancedCV_2020/AdvanceCV_project/data/DETRAC'
+    root_path = '/home/keyi/research/data/DETRAC'
+    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
+    # root_path = '/media/keyi/Data/Research/traffic/data/DETRAC'
+    # output_folder = '/media/keyi/Data/Research/course_project/AdvancedCV_2020/AdvanceCV_project/data/DETRAC'
 
     create_data_lists_detrac(root_path, output_folder)

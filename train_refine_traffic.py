@@ -27,6 +27,7 @@ parser.add_argument('--load-path', default='', type=str)
 parser.add_argument('--save-path', default='', type=str)
 parser.add_argument('--recover', action='store_true')
 parser.add_argument('-e', '--evaluate', action='store_true')
+parser.add_argument('--finetune', action='store_true')
 
 
 def main():
@@ -74,6 +75,12 @@ def main():
     val_data_folder = config.val_data_root
     if not isinstance(config.model['input_size'], list):
         input_size = (int(config.model['input_size']), int(config.model['input_size']))
+
+    now = datetime.now()
+    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                                'log_{}_{}.txt'.format(config.model['arch'],
+                                                                                       date_time)))
 
     # Learning parameters
     if args.recover:
@@ -146,11 +153,11 @@ def main():
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'DETRAC':
-        train_dataset = DetracDataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_dataset = DetracDataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
-        test_dataset = DetracDataset(val_data_folder, split='val', input_size=input_size, config=config)
+        test_dataset = DetracDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
@@ -184,9 +191,9 @@ def main():
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
     config.tb_logger = SummaryWriter(config.event_path)
-    config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                'log_{}_{}.txt'.format(config.model['arch'],
-                                                                                       date_time)))
+    # config.logger = create_logger('global_logger', os.path.join(config.log_path,
+    #                                                             'log_{}_{}.txt'.format(config.model['arch'],
+    #                                                                                    date_time)))
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
