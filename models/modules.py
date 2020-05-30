@@ -27,6 +27,7 @@ class AdaptivePooling(nn.Module):
         self.inplane = inplanes
         self.outplane = outplanes
         self.kernel_size = kernel_size
+
         self.adaptive_size = adaptive_size
 
         # multiple branches for feature extraction
@@ -34,7 +35,7 @@ class AdaptivePooling(nn.Module):
         self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=3, dilation=3)
         self.conv_astrous3 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=5, dilation=5)
 
-        self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
+        self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)  #
         self.transition = nn.Conv2d(128 * 3, self.outplane, kernel_size=1)
         self.act = Mish()
 

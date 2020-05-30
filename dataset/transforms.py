@@ -341,7 +341,7 @@ def transform(image, boxes, labels, split, resize_dim, config):
     assert split in {'TRAIN', 'TEST', 'VAL'}
     operation_list = config.model['operation_list']
     return_percent_coords = config.model['return_percent_coords']
-    resize_dims_list = config.model['input_size']
+    # resize_dims_list = config.model['input_size']
 
     # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
     # see: https://pytorch.org/docs/stable/torchvision/models.html

@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset, DetracDataset
 from utils import create_logger, save_checkpoint
 from models.utils import detect
 from metrics import AverageMeter, calculate_mAP
@@ -87,6 +87,18 @@ def main():
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
+        if args.finetune:
+            checkpoint = torch.load(args.load_path, map_location=config.device)
+            init_model = checkpoint['model']
+            reuse_layers = {}
+            for param_tensor in init_model.state_dict().keys():
+                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
+                        or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
+                    reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
+                    print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
+            model.load_state_dict(reuse_layers, strict=False)
+            str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
+            config.logger.info(str_info)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
@@ -131,6 +143,15 @@ def main():
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
+    elif config.data_name.upper() == 'DETRAC':
+        train_dataset = DetracDataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.internal_batchsize, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=False)
+        test_dataset = DetracDataset(val_data_folder, split='val', input_size=input_size, config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
 
@@ -252,7 +273,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         data_time.update(time.time() - start)
 
         # Bag of Freebies, image mixup and mosaic
-        images, boxes, labels = bof_augment(images, boxes, labels, config)
+        # images, boxes, labels = bof_augment(images, boxes, labels, config)
         # print(boxes, labels)
 
         # Move to default device
@@ -345,6 +366,14 @@ def evaluate(test_loader, model, optimizer, config):
                            max_overlap=config.nms['max_overlap'],
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                            config=config, prior_positives_idx=prior_positives_idx)
+            elif config.data_name.upper() == 'DETRAC':
+                det_boxes_batch, det_labels_batch, det_scores_batch = \
+                    detect(predicted_locs,
+                           predicted_scores,
+                           min_score=config.nms['min_score'],
+                           max_overlap=config.nms['max_overlap'],
+                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                           config=config, prior_positives_idx=prior_positives_idx)
             else:
                 raise NotImplementedError
 
@@ -361,7 +390,7 @@ def evaluate(test_loader, model, optimizer, config):
             detect_speed.append((time_end - time_start) / len(labels))
 
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
+        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.7,
                                  config.label_map, config.device)
 
     # Print AP for each class
