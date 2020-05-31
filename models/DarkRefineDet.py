@@ -170,9 +170,9 @@ class TCB(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.normal_(m.weight.data)
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -223,9 +223,9 @@ class TCBTail(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.normal_(m.weight.data)
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -294,9 +294,9 @@ class ARMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
-                c.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.normal_(c.weight.data)
+                # n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
+                # c.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias, 0)
 
@@ -404,9 +404,9 @@ class ODMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
-                c.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.normal_(c.weight.data)
+                # n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
+                # c.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias.data, 0)
 

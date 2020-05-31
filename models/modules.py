@@ -20,14 +20,16 @@ class ConvBNAct(nn.Module):
         self.BN = nn.BatchNorm2d(self.out_planes)
 
         # parameters initialization
+        '''
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.normal_(m.weight.data)
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+        '''
 
     def forward(self, x):
         x = self.Conv(x)
