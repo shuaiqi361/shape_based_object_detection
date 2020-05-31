@@ -27,7 +27,7 @@ def parse_annotation(annotation_path, image_folder, down_sample=False):
     object_list = list()
     image_paths = list()
     # print('Parse DETRAC annotations:')
-    print('Annotation path:', annotation_path)
+    # print('Annotation path:', annotation_path)
     # print('Image Folder:', image_folder)
 
     # parse ignored regions
@@ -173,7 +173,7 @@ def create_data_lists_detrac(root_path, output_folder):
     image_root = os.path.join(root_path, image_folder)  # under: sequence_name/image_name
     count = 0
     for video in os.listdir(annotation_path):
-        print('Train data: {}/{}'.format(count + 1, len(os.listdir(annotation_path))))
+        # print('Train data: {}/{}'.format(count + 1, len(os.listdir(annotation_path))))
         if video.endswith('.xml'):
             objects, image_frames_path = parse_annotation(os.path.join(annotation_path, video),
                                                           os.path.join(image_root, video.strip('.xml')))
@@ -216,11 +216,11 @@ def create_data_lists_detrac(root_path, output_folder):
     image_root = os.path.join(root_path, image_folder)  # under: sequence_name/image_name
     count = 0
     for video in os.listdir(annotation_path):
-        print('Test data: {}/{}'.format(count + 1, len(os.listdir(annotation_path))))
+        # print('Test data: {}/{}'.format(count + 1, len(os.listdir(annotation_path))))
         if video.endswith('.xml'):
 
             objects, image_frames_path = parse_annotation(os.path.join(annotation_path, video),
-                                                          os.path.join(image_root, video.strip('.xml')))
+                                                          os.path.join(image_root, video.strip('.xml')), True)
 
             if len(objects) == 0:
                 continue
