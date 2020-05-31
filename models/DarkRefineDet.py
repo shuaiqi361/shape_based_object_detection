@@ -11,38 +11,38 @@ from .modules import Mish, AdaptivePooling, Residual, ConvBNAct, DualAdaptivePoo
 class DarkBlock(nn.Module):
     def __init__(self, in_planes, out_planes, n_blocks):
         super(DarkBlock, self).__init__()
-        self.in_planes = in_planes  # 128
-        self.out_planes = out_planes  # 256
+        self.in_planes = in_planes  # 64
+        self.out_planes = out_planes  # 128
         self.n_blocks = n_blocks
         self.Conv = ConvBNAct
         self.Residual = Residual
         self.Block = self.__make_block__(self.n_blocks)
         self.transition = nn.Conv2d(self.in_planes, self.out_planes,
                                     kernel_size=3, padding=1, stride=2)
-        
+
     def __make_block__(self, n_blocks):
         block = []
         for i in range(n_blocks):
             layer = self.__make_layers__(self.Conv, self.Residual)
             block.append(layer)
-            
+
         return nn.Sequential(*block)
-        
+
     def __make_layers__(self, conv_block, residual_block):
         layers = list()
-        layers.append(conv_block(self.in_planes // 2, self.in_planes // 4, kernel_size=1, padding=0))
-        layers.append(conv_block(self.in_planes // 4, self.in_planes // 2, kernel_size=3, padding=1))
-        layers.append(residual_block(self.in_planes // 2))
+        layers.append(conv_block(self.in_planes, self.in_planes // 2, kernel_size=1, padding=0))
+        layers.append(conv_block(self.in_planes // 2, self.in_planes, kernel_size=3, padding=1))
+        layers.append(residual_block(self.in_planes))
 
         return nn.Sequential(*layers)
-    
+
     def forward(self, x):
-        n_channels = x.size(1)
-        x0 = x[:, :n_channels // 2, :, :]
-        x1 = x[:, n_channels // 2:, :, :]
-        feats = self.Block(x1)
-        trans_feats = self.transition(torch.cat([x0, feats], dim=1))
-        
+        # n_channels = x.size(1)
+        # x0 = x[:, :n_channels // 2, :, :]
+        # x1 = x[:, n_channels // 2:, :, :]
+        feats = self.Block(x)
+        trans_feats = self.transition(feats)
+
         return feats, trans_feats
 
 
@@ -55,18 +55,18 @@ class CSPDarknetBase(nn.Module):
     def __init__(self):
         super(CSPDarknetBase, self).__init__()
 
-        self.conv1_1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
-        self.BN1 = nn.BatchNorm2d(64)
-        self.conv1_2 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=2)  # (256, 256)
-        self.BN2 = nn.BatchNorm2d(128)
+        self.conv1_1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.BN1 = nn.BatchNorm2d(32)
+        self.conv1_2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=2)  # (256, 256)
+        self.BN2 = nn.BatchNorm2d(64)
 
-        self.DarkB1 = DarkBlock(128, 256, 1)
-        self.adap_pool = DualAdaptivePooling(256, 256, adaptive_size=128)   # (128, 128)
-        
-        self.DarkB2 = DarkBlock(256, 256, 4)  # (64, 64)
+        self.DarkB1 = DarkBlock(64, 128, 1)
+        self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128)  # (128, 128)
+
+        self.DarkB2 = DarkBlock(128, 256, 4)  # (64, 64)
         self.DarkB3 = DarkBlock(256, 512, 6)  # (32, 32)
         self.DarkB4 = DarkBlock(512, 512, 6)  # (16, 16)
-        self.DarkB5 = DarkBlock(512, 1024, 6)  # (8, 8)
+        self.DarkB5 = DarkBlock(512, 1024, 4)  # (8, 8)
         self.DarkB6 = DarkBlock(1024, 1024, 4)
 
         self.mish = Mish()
@@ -101,10 +101,10 @@ class TCBConvolutions(nn.Module):
         """
         super(TCBConvolutions, self).__init__()
 
-        self.feat_channels = {'DB3': 128,
-                              'DB4': 256,
-                              'DB5': 256,
-                              'DB6': 512}
+        self.feat_channels = {'DB3': 256,
+                              'DB4': 512,
+                              'DB5': 512,
+                              'DB6': 1024}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.tcb_conv4_3 = TCB(self.feat_channels['DB3'], self.feat_channels['DB4'], internal_channels)
@@ -170,9 +170,9 @@ class TCB(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, sqrt(2. / n))
+                # nn.init.normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -223,9 +223,9 @@ class TCBTail(nn.Module):
         # parameters initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, sqrt(2. / n))
-                nn.init.xavier_normal_(m.weight.data)
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, sqrt(2. / n))
+                # nn.init.normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -256,10 +256,10 @@ class ARMConvolutions(nn.Module):
         super(ARMConvolutions, self).__init__()
 
         self.n_classes = 2  # foreground and background
-        self.feat_channels = {'DB3': 128,
-                              'DB4': 256,
-                              'DB5': 256,
-                              'DB6': 512}
+        self.feat_channels = {'DB3': 256,
+                              'DB4': 512,
+                              'DB5': 512,
+                              'DB6': 1024}
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'DB3': 3,
@@ -294,7 +294,9 @@ class ARMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight.data)
+                n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
+                c.weight.data.normal_(0, sqrt(2. / n))
+                # nn.init.normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias, 0)
 
@@ -376,10 +378,10 @@ class ODMConvolutions(nn.Module):
                    'DB5': 3,
                    'DB6': 3}
 
-        self.feat_channels = {'DB3': 128,
-                              'DB4': 256,
-                              'DB5': 256,
-                              'DB6': 512}
+        self.feat_channels = {'DB3': 256,
+                              'DB4': 512,
+                              'DB5': 512,
+                              'DB6': 1024}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
@@ -402,7 +404,9 @@ class ODMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight.data)
+                n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
+                c.weight.data.normal_(0, sqrt(2. / n))
+                # nn.init.normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias.data, 0)
 
