@@ -14,8 +14,8 @@ class DarkBlock(nn.Module):
         self.in_planes = in_planes  # 64
         self.out_planes = out_planes  # 128
         self.n_blocks = n_blocks
-        self.Conv = ConvBNAct
-        self.Residual = Residual
+        # self.Conv = ConvBNAct
+        # self.Residual = Residual
         self.Block = self.__make_block__(self.n_blocks)
         self.transition = nn.Conv2d(self.in_planes, self.out_planes,
                                     kernel_size=3, padding=1, stride=2)
@@ -23,7 +23,7 @@ class DarkBlock(nn.Module):
     def __make_block__(self, n_blocks):
         block = []
         for i in range(n_blocks):
-            layer = self.__make_layers__(self.Conv, self.Residual)
+            layer = self.__make_layers__(ConvBNAct, Residual)
             block.append(layer)
 
         return nn.Sequential(*block)
@@ -63,11 +63,11 @@ class CSPDarknetBase(nn.Module):
         self.DarkB1 = DarkBlock(64, 128, 1)
         self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128)  # (128, 128)
 
-        self.DarkB2 = DarkBlock(128, 256, 4)  # (64, 64)
-        self.DarkB3 = DarkBlock(256, 512, 6)  # (32, 32)
-        self.DarkB4 = DarkBlock(512, 512, 6)  # (16, 16)
+        self.DarkB2 = DarkBlock(128, 256, 2)  # (64, 64)
+        self.DarkB3 = DarkBlock(256, 512, 4)  # (32, 32)
+        self.DarkB4 = DarkBlock(512, 512, 4)  # (16, 16)
         self.DarkB5 = DarkBlock(512, 1024, 4)  # (8, 8)
-        self.DarkB6 = DarkBlock(1024, 1024, 4)
+        self.DarkB6 = DarkBlock(1024, 1024, 2)
 
         self.mish = Mish()
 
