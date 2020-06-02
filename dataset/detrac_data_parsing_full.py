@@ -246,9 +246,9 @@ def create_data_lists_detrac(root_path, output_folder):
 if __name__ == '__main__':
     # root_path = '/home/keyi/research/data/DETRAC'
     # output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/DETRAC'
-    root_path = '/home/keyi/research/data/DETRAC'
-    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
-    # root_path = '/media/keyi/Data/Research/traffic/data/DETRAC'
-    # output_folder = '/media/keyi/Data/Research/course_project/AdvancedCV_2020/AdvanceCV_project/data/DETRAC'
+    # root_path = '/home/keyi/research/data/DETRAC'
+    # output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
+    root_path = '/home/keyi/Documents/Data/DETRAC'
+    output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC'
 
     create_data_lists_detrac(root_path, output_folder)

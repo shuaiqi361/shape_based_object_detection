@@ -304,6 +304,9 @@ class DetracDataset(Dataset):
         for region in ignore_regions:
             cv2.rectangle(img, (region[0], region[1]), (region[2], region[3]), (127, 127, 127), -1)
 
+        # cv2.imshow('inputs', img)
+        # cv2.waitKey()
+        # exit()
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(img)
 

@@ -49,7 +49,7 @@ class VGGBase(nn.Module):
         self.mish = Mish()
 
         # Load pretrained layers
-        # self.load_pretrained_layers()
+        self.load_pretrained_layers()
 
     def forward(self, image):
         """
@@ -150,7 +150,7 @@ class AuxiliaryConvolutions(nn.Module):
         self.conv9_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
 
         # Initialize convolutions' parameters
-        # self.init_conv2d()
+        self.init_conv2d()
         self.mish = Mish()
 
     def init_conv2d(self):
@@ -160,6 +160,7 @@ class AuxiliaryConvolutions(nn.Module):
         for c in self.children():
             if isinstance(c, nn.Conv2d):
                 nn.init.xavier_normal_(c.weight.data)
+                # nn.init.normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias.data, 0)
 
@@ -192,6 +193,10 @@ class AuxiliaryConvolutions(nn.Module):
 
         # Higher-level feature maps
         # print(conv8_2_feats.size(), conv9_2_feats.size(), conv10_2_feats.size(), conv11_2_feats.size())
+        # print('conv8_2_feats:', conv8_2_feats.cpu().data)
+        # print(conv9_2_feats.cpu().data)
+        # exit()
+
         return conv8_2_feats, conv9_2_feats  # , conv10_2_feats, conv11_2_feats, conv12_2_feats
 
 
@@ -274,14 +279,15 @@ class TCB(nn.Module):
             self.bn3 = nn.BatchNorm2d(internal_channels)
 
         # parameters initialization
-        # for m in self.modules():
-        #     if isinstance(m, nn.Conv2d):
-        #         # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-        #         # m.weight.data.normal_(0, sqrt(2. / n))
-        #         nn.init.xavier_normal_(m.weight.data)
-        #     elif isinstance(m, nn.BatchNorm2d):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.normal_(m.weight.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, lateral, higher_level):
         if self.is_batchnorm:
@@ -327,14 +333,15 @@ class TCBTail(nn.Module):
             self.bn3 = nn.BatchNorm2d(internal_channels)
 
         # parameters initialization
-        # for m in self.modules():
-        #     if isinstance(m, nn.Conv2d):
-        #         # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-        #         # m.weight.data.normal_(0, sqrt(2. / n))
-        #         nn.init.xavier_normal_(m.weight.data)
-        #     elif isinstance(m, nn.BatchNorm2d):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.normal_(m.weight.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, lateral):
         if self.is_batchnorm:
@@ -398,7 +405,7 @@ class ARMConvolutions(nn.Module):
         # self.cl_conv12_2 = nn.Conv2d(256, n_boxes['conv12_2'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
-        # self.init_conv2d()
+        self.init_conv2d()
 
     def init_conv2d(self):
         """
@@ -407,6 +414,7 @@ class ARMConvolutions(nn.Module):
         for c in self.children():
             if isinstance(c, nn.Conv2d):
                 nn.init.xavier_normal_(c.weight.data)
+                # nn.init.normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias, 0)
 
@@ -466,6 +474,10 @@ class ARMConvolutions(nn.Module):
         locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2], dim=1).contiguous()
         classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2], dim=1).contiguous()
 
+        # print('arm_locs_feats:', locs.cpu().data)
+        # print(classes_scores.cpu().data)
+        # exit()
+
         return locs, classes_scores
 
 
@@ -507,7 +519,7 @@ class ODMConvolutions(nn.Module):
         self.cl_conv9_2 = nn.Conv2d(internal_channels, n_boxes['conv9_2'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
-        # self.init_conv2d()
+        self.init_conv2d()
 
     def init_conv2d(self):
         """
@@ -515,7 +527,8 @@ class ODMConvolutions(nn.Module):
         """
         for c in self.children():
             if isinstance(c, nn.Conv2d):
-                nn.init.xavier_normal_(c.weight.data)
+                # nn.init.xavier_normal_(c.weight.data)
+                nn.init.normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias.data, 0)
 
@@ -599,10 +612,10 @@ class RefineDetBofTraffic(nn.Module):
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
         self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        # nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
 
         self.rescale_factors_conv7 = nn.Parameter(torch.FloatTensor(1, 1024, 1, 1))
-        # nn.init.constant_(self.rescale_factors_conv7, 10.)
+        nn.init.constant_(self.rescale_factors_conv7, 10.)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -642,6 +655,10 @@ class RefineDetBofTraffic(nn.Module):
         raw_locs = self.offset2bbox(arm_locs.data.detach(), odm_locs.data.detach())
         # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
         prior_positive_idx = (arm_scores[:, :, 1] > self.theta)  # (batchsize, n_priors)
+
+        # print(arm_locs.cpu().data)
+        # print(arm_scores.cpu().data)
+        # exit()
 
         return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_positive_idx
 

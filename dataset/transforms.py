@@ -100,7 +100,7 @@ def expand(image, boxes, filler):
     # Calculate dimensions of proposed expanded (zoomed-out) image
     original_h = image.size(1)
     original_w = image.size(2)
-    max_scale = 4
+    max_scale = 3
     scale = random.uniform(1, max_scale)
     new_h = int(scale * original_h)
     new_w = int(scale * original_w)
@@ -362,11 +362,11 @@ def transform(image, boxes, labels, split, resize_dim, config):
 
         # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
         # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
-        if random.random() < 0.5 and 'expand' in operation_list:
+        if random.random() < 0.3 and 'expand' in operation_list:
             new_image, new_boxes = expand(new_image, boxes, filler=mean)
 
         # Randomly crop image (zoom in)
-        if random.random() < 0.5 and 'random_crop' in operation_list:
+        if random.random() < 0.3 and 'random_crop' in operation_list:
             new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
 
         # Convert Torch tensor to PIL image
@@ -377,7 +377,15 @@ def transform(image, boxes, labels, split, resize_dim, config):
 
     # Resize image
     new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
-
+    # temp_boxes = new_boxes.clamp_(0, 1)
+    # draw = ImageDraw.Draw(new_image)
+    # n_boxes = temp_boxes.size(0)
+    # for i in range(n_boxes):
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
+    #     draw.rectangle(coord)
+    # new_image.show()
+    # new_image.show()
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)
 
