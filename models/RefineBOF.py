@@ -5,7 +5,7 @@ import torchvision
 from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
-from .modules import Mish, AdaptivePooling, AttentionHead, AttentionHeadSplit
+from .modules import Mish, AdaptivePooling, AttentionHead, AttentionHeadSplit, DualAdaptivePooling
 
 
 class VGGBase(nn.Module):
@@ -30,7 +30,7 @@ class VGGBase(nn.Module):
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         # self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.pool3 = AdaptivePooling(256, 256, adaptive_size=64)
+        self.pool3 = DualAdaptivePooling(256, 256, adaptive_size=64)
 
         self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
         self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)

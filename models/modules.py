@@ -84,7 +84,7 @@ class DualAdaptivePooling(nn.Module):
 
         # multiple branches for feature extraction
         self.conv_astrous1 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=1, dilation=1)
-        self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=3, dilation=3)
+        self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=2, dilation=2)
 
         self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
         self.transition = nn.Conv2d(128 * 2, self.outplane, kernel_size=1)
