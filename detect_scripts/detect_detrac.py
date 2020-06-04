@@ -90,7 +90,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
         video_out.write(annotated_image)
         for k in range(len(frame_info_list)):
             f_out.write(str(frame_id) + frame_info_list[k])
-            
+
         frame_id += 1
         cv2.imshow('frame detect', annotated_image)
         # print(str(frame_id) + frame_info)
