@@ -1,3 +1,5 @@
+import sys
+sys.path.append('/home/keyi/Documents/research/code/shape_based_object_detection')
 from torchvision import transforms
 from PIL import Image
 import os
@@ -30,11 +32,11 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-root_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/RefineDet_traffic_001'
-folder_path = '/media/keyi/Data/Research/traffic/data/DETRAC/Insight-MVT_Annotation_Test'
+root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/RefineDet_traffic_001'
+folder_path = '/home/keyi/Documents/Data/DETRAC/Insight-MVT_Annotation_Test'
 model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-10.pth.tar')
 
-meta_data_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/data/DETRAC/label_map.json'
+meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
 output_path = os.path.join(root_path, 'live_results/Hwy7')
 output_file_flag = True
 output_video_flag = True
@@ -78,7 +80,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
     frame_list = os.listdir(folder_path)
     n_frames = len(frame_list)
     for frame_id in range(n_frames):
-        frame_name = 'img{:05d}.png'.format(frame_id + 1)
+        frame_name = 'img{:05d}.jpg'.format(frame_id + 1)
         frame_path = os.path.join(folder_path, frame_name)
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
@@ -89,7 +91,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
 
         video_out.write(annotated_image)
         for k in range(len(frame_info_list)):
-            f_out.write(str(frame_id) + frame_info_list[k])
+            f_out.write(str(frame_id + 1) + frame_info_list[k])
             
         frame_id += 1
         cv2.imshow('frame detect', annotated_image)
@@ -191,48 +193,7 @@ def print_help():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print_help()
-        exit()
-    if sys.argv[1] == '--video':
-        # root_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/experiment'
-        # video_path = '/media/keyi/Data/Research/traffic/data/Hwy7/20200224_153147_demo4.mkv'
-        # model_path = os.path.join(root_path, 'SSD512_traffic_002/snapshots/checkpoint_epoch-20.pth.tar')
-        # data_set = 'traffic'
-        # meta_data_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/dataset/DETRAC/label_map.json'
-        # output_path = os.path.join(root_path, 'SSD512_traffic_002/live_results')
-        # detect_video(video_path, model_path, data_set, meta_data_path, output_path)
-
-        root_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/SSD512_exp_003'
-        video_path = '/media/keyi/Data/Research/traffic/data/Hwy7/20200224_153147_demo4.mkv'
-        model_path = os.path.join(root_path, 'snapshots/ssd512_traffic_checkpoint_epoch-3.pth.tar')
-        data_set = 'traffic'
-        meta_data_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/dataset/DETRAC/label_map.json'
-        output_path = os.path.join(root_path, 'live_results')
-        output_file = os.path.join(output_path, video_path.split('/')[-1].strip('.mkv') + '.txt')
-        detect_video(video_path, model_path, data_set, meta_data_path, output_path, output_file)
-    elif sys.argv[1] == '--folder':
-        # root_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/experiment'
-        # folder_path = '/media/keyi/Data/Research/traffic/synthetic_data/GTA_itstraffic/object/image_2'
-        # model_path = os.path.join(root_path, 'SSD512_traffic_002/snapshots/checkpoint_epoch-20.pth.tar')
-        # data_set = 'traffic'
-        # meta_data_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/dataset/DETRAC/label_map.json'
-        # output_path = os.path.join(root_path, 'SSD512_traffic_002/live_results/GTA')
-        # detect_folder(folder_path, model_path, data_set, meta_data_path, output_path)
-
-        # root_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/experiment'
-        # folder_path = '/media/keyi/Data/Research/traffic/synthetic_data/GTA_itstraffic/object/image_2'
-        # model_path = os.path.join(root_path, 'SSD300_traffic_001/snapshots/checkpoint_epoch-60.pth.tar')
-        # data_set = 'traffic'
-        # meta_data_path = '/media/keyi/Data/Research/traffic/detection/object_detection_2D/dataset/Citycam/label_map.json'
-        # output_path = os.path.join(root_path, 'SSD300_traffic_001/live_results/GTA')
-        # detect_folder(folder_path, model_path, data_set, meta_data_path, output_path)
-
-        root_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/RefineDet_traffic_001'
-        folder_path = '/media/keyi/Data/Research/traffic/data/Hwy7/20200224_153147'
-        model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-10.pth.tar')
-        data_set = 'traffic'
-        meta_data_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/data/DETRAC/label_map.json'
-        output_path = os.path.join(root_path, 'live_results/Hwy7')
-        output_file = os.path.join(output_path, 'RefineDetBOFTraffic_frames_results.txt')
-        detect_folder(folder_path, model_path, data_set, meta_data_path, output_path, output_file)
+    video_list = os.listdir(folder_path)
+    for v in video_list:
+        sequence_path = os.path.join(folder_path, v)
+        detect_folder(sequence_path, model_path, meta_data_path)

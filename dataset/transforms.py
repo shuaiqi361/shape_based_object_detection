@@ -86,7 +86,7 @@ def gcxgcy_to_cxcy(gcxgcy, priors_cxcy):
                       torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], 1)  # w, h
 
 
-def expand(image, boxes, filler):
+def expand(image, boxes, filler, max_scale=4):
     """
     Perform a zooming out operation by placing the image in a larger canvas of filler material.
 
@@ -100,7 +100,7 @@ def expand(image, boxes, filler):
     # Calculate dimensions of proposed expanded (zoomed-out) image
     original_h = image.size(1)
     original_w = image.size(2)
-    max_scale = 3
+
     scale = random.uniform(1, max_scale)
     new_h = int(scale * original_h)
     new_w = int(scale * original_w)
@@ -441,7 +441,7 @@ def transform_richer(image, boxes, labels, split, config):
             # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
             # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
             if random.random() < 0.25 and 'expand' in operation_list:
-                new_image, new_boxes = expand(new_image, boxes, filler=mean)
+                new_image, new_boxes = expand(new_image, boxes, filler=mean, max_scale=2.0)
 
             # Randomly crop image (zoom in)
             if random.random() < 0.25 and 'random_crop' in operation_list:
@@ -478,19 +478,20 @@ def bof_augment(images, boxes, labels, config):
     new_boxes = list()
     resize_dims = config.model['input_size']
     if 'random_shape' in operation_list:
-        resize_dim = resize_dims[np.random.randint(0, len(resize_dims))]
+        s = resize_dims[np.random.randint(0, len(resize_dims))]
+        resize_dim = (s, s)
     else:
         if isinstance(resize_dims, list):
             resize_dim = resize_dims[0]
         else:
-            resize_dim = resize_dims
+            resize_dim = (540, 960)
     # print('boxes from loader', boxes)
 
     if 'mixup' in operation_list and random.random() < 0.5:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
 
-        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = torch.where(temp_image == 0,
@@ -513,7 +514,7 @@ def bof_augment(images, boxes, labels, config):
         new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize(images[0], boxes[0], dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize(images[0], boxes[0], dims=resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -535,10 +536,10 @@ def bof_augment(images, boxes, labels, config):
     #
     # exit()
 
-    if 'mosaic' in operation_list and random.random() < 0.5:
+    if 'mosaic' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
         # temp_boxes = torch.cat(temp_boxes, dim=0)
-        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -546,7 +547,7 @@ def bof_augment(images, boxes, labels, config):
         new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize(images[2], boxes[2], dims=(resize_dim, resize_dim),
+        temp_image, temp_boxes = resize(images[2], boxes[2], dims=resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -560,8 +561,8 @@ def bof_augment(images, boxes, labels, config):
     # n_boxes = temp_boxes.size(0)
     # rect_coord = []
     # for i in range(n_boxes):
-    #     coord = ((int(temp_boxes[i][0] * resize_dim), int(temp_boxes[i][1] * resize_dim)),
-    #              (int(temp_boxes[i][2] * resize_dim), int(temp_boxes[i][3] * resize_dim)))
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
     #     # rect_coord.append(coord)
     #     draw.rectangle(coord)
     # temp_image.show()
