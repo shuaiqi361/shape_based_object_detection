@@ -311,8 +311,11 @@ class DetracDataset(Dataset):
         image = Image.fromarray(img)
 
         # Apply transformations
-        image, boxes, labels = transform(image, boxes, labels,
-                                         split=self.split, resize_dim=(540, 960),
+        # image, boxes, labels = transform(image, boxes, labels,
+        #                                  split=self.split, resize_dim=(540, 960),
+        #                                  config=self.config)
+        image, boxes, labels = transform_richer(image, boxes, labels,
+                                         split=self.split,
                                          config=self.config)
 
         return image, boxes, labels, ids, difficulties

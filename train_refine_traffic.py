@@ -158,7 +158,7 @@ def main():
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
         test_dataset = DetracDataset(val_data_folder, split='val', config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.internal_batchsize, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
 
@@ -280,7 +280,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         data_time.update(time.time() - start)
 
         # Bag of Freebies, image mixup and mosaic
-        # images, boxes, labels = bof_augment(images, boxes, labels, config)
+        images, boxes, labels = bof_augment(images, boxes, labels, config)
         # print(boxes, labels)
 
         # Move to default device
@@ -397,7 +397,7 @@ def evaluate(test_loader, model, optimizer, config):
             detect_speed.append((time_end - time_start) / len(labels))
 
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.7,
+        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, 0.5,
                                  config.label_map, config.device)
 
     # Print AP for each class

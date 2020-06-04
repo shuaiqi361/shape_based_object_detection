@@ -1,3 +1,5 @@
+import sys
+sys.path.append('/home/keyi/Documents/research/code/shape_based_object_detection')
 from torchvision import transforms
 from PIL import Image
 import os
@@ -12,7 +14,7 @@ from detect_scripts.detect_tools import detect
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Transforms
-resize = transforms.Resize((270, 480))
+resize = transforms.Resize((720, 1280))
 # resize = transforms.Resize((300, 300))
 
 to_tensor = transforms.ToTensor()
@@ -276,11 +278,11 @@ if __name__ == '__main__':
         # output_path = os.path.join(root_path, 'SSD300_traffic_001/live_results/GTA')
         # detect_folder(folder_path, model_path, data_set, meta_data_path, output_path)
 
-        root_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/RefineDet_traffic_001'
-        folder_path = '/media/keyi/Data/Research/traffic/data/Hwy7/20200224_153147'
+        root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/RefineDet_traffic_001'
+        folder_path = '/home/keyi/Documents/Data/Hwy7/20200224_153147_d2_1200'
         model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-10.pth.tar')
         data_set = 'traffic'
-        meta_data_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/data/DETRAC/label_map.json'
+        meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
         output_path = os.path.join(root_path, 'live_results/Hwy7')
         output_file = os.path.join(output_path, 'RefineDetBOFTraffic_frames_results.txt')
         detect_folder(folder_path, model_path, data_set, meta_data_path, output_path, output_file)
