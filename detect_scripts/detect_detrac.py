@@ -12,7 +12,7 @@ from detect_scripts.detect_tools import detect
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Transforms
-resize = transforms.Resize((270, 480))
+resize = transforms.Resize((540, 960))
 # resize = transforms.Resize((300, 300))
 
 to_tensor = transforms.ToTensor()
@@ -30,7 +30,17 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-def detect_folder(folder_path, model_path, data_set, meta_data_path, output_path, output_file=None):
+root_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/experiment/RefineDet_traffic_001'
+folder_path = '/media/keyi/Data/Research/traffic/data/DETRAC/Insight-MVT_Annotation_Test'
+model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-10.pth.tar')
+
+meta_data_path = '/media/keyi/Data/Research/traffic/detection/shape_based_object_detection/data/DETRAC/label_map.json'
+output_path = os.path.join(root_path, 'live_results/Hwy7')
+output_file_flag = True
+output_video_flag = True
+
+
+def detect_folder(folder_path, model_path, meta_data_path):
     # load model
     checkpoint = torch.load(model_path, map_location=device)
     start_epoch = checkpoint['epoch'] + 1
@@ -48,35 +58,39 @@ def detect_folder(folder_path, model_path, data_set, meta_data_path, output_path
 
     # load video
     if not os.path.exists(folder_path):
-        print('video path incorrect.')
+        print('DETRAC datsaet path not found.')
         exit()
 
     width = 960
     height = 540
-    fps = 30
+    fps = 30  # output video configuration
 
-    video_out = cv2.VideoWriter(os.path.join(output_path, '20200224_153147_SSD512.mkv'),
+    folder_name = folder_path.split('/')[-1]
+
+    video_out = cv2.VideoWriter(os.path.join(output_path, folder_name + '.mkv'),
                                 cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
 
+    output_file = os.path.join(output_path, folder_name + '_Det_RefineDetBof.txt')
     if output_file is not None:
         f_out = open(output_file, 'w')
 
     speed_list = list()
     frame_list = os.listdir(folder_path)
     n_frames = len(frame_list)
-    # for frame_id in range(n_frames):
-    for frame_id in range(1200):
-        frame_name = 'img{:04d}.png'.format(frame_id + 1)
+    for frame_id in range(n_frames):
+        frame_name = 'img{:05d}.png'.format(frame_id + 1)
         frame_path = os.path.join(folder_path, frame_name)
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
 
-        annotated_image, time_pframe, frame_info = detect_image(frame, model, 0.1, 0.3, 300,
+        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.1, 0.45, 500,
                                                                 rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
         video_out.write(annotated_image)
-        f_out.write(str(frame_id) + frame_info)
+        for k in range(len(frame_info_list)):
+            f_out.write(str(frame_id) + frame_info_list[k])
+            
         frame_id += 1
         cv2.imshow('frame detect', annotated_image)
         # print(str(frame_id) + frame_info)
@@ -87,68 +101,6 @@ def detect_folder(folder_path, model_path, data_set, meta_data_path, output_path
 
     print('Average speed: {} fps.'.format(1. / np.mean(speed_list)))
     print('Saved to:', output_path)
-    print('Video configuration: \nresolution:{}x{}, fps:{}'.format(width, height, fps))
-
-
-def detect_video(video_path, model_path, data_set, meta_data_path, output_path, output_file=None):
-    # load model
-    checkpoint = torch.load(model_path, map_location=device)
-    start_epoch = checkpoint['epoch'] + 1
-    print(model_path)
-    print('Loading checkpoint from epoch %d.\n' % start_epoch)
-    model = checkpoint['model']
-    model.device = device
-    model = model.to(device)
-    model.eval()
-
-    with open(meta_data_path, 'r') as j:
-        traffic_label_map = json.load(j)
-    rev_traffic_label_map = {v: k for k, v in traffic_label_map.items()}
-    label_color_map = {k: distinct_colors[i] for i, k in enumerate(traffic_label_map.keys())}
-
-    if output_file is not None:
-        f_out = open(output_file, 'w')
-
-    # load video
-    if not os.path.exists(video_path):
-        print('video path incorrect.')
-        exit()
-    cap_video = cv2.VideoCapture(video_path)
-    width = int(cap_video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap_video.get(cv2.CAP_PROP_FPS))
-
-    video_out = cv2.VideoWriter(os.path.join(output_path, video_path.split('/')[-1]),
-                                cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
-
-    speed_list = list()
-    frame_id = 0
-    while True:
-        print("Processing frame: ", frame_id)
-
-        ret, frame = cap_video.read()
-        if not ret:
-            print('Image rendering done. ')
-            break
-
-        annotated_image, time_pframe, frame_info = detect_image(frame, model, 0.15, 0.45, 200,
-                                                                rev_traffic_label_map, label_color_map)
-        speed_list.append(time_pframe)
-
-        video_out.write(annotated_image)
-        f_out.write(str(frame_id) + frame_info)
-        frame_id += 1
-        cv2.imshow('frame detect', annotated_image)
-        # print(str(frame_id) + frame_info)
-        # cv2.waitKey()
-        # exit()
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap_video.release()
-    f_out.close()
-    print('Average speed: {} fps.'.format(1. / np.mean(speed_list)))
-    print('Saved to:', os.path.join(output_path, video_path.split('/')[-1]))
     print('Video configuration: \nresolution:{}x{}, fps:{}'.format(width, height, fps))
 
 
@@ -196,7 +148,7 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
         return annotated_image, start - stop, '\n'
 
     # Annotate
-    frame_info = ''
+    frame_info_list = []
     for i in range(len(det_labels)):
         # Boxes
         box_location = det_boxes[i].tolist()
@@ -218,15 +170,15 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
         cv2.putText(annotated_image, text, org=(int(text_location[0]), int(text_location[3])),
                     fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.4, color=(255, 255, 255))
 
-        per_object_prediction_info = ' {0} {1:.4f} {2:.4f} {3:.4f} {4:.4f} {5:.3f}'.format(label_id,
-                                                                                           box_coordinates[0],
-                                                                                           box_coordinates[1],
-                                                                                           box_coordinates[2],
-                                                                                           box_coordinates[3],
+        per_object_prediction_info = ',{0},{1:.2f},{2:.2f},{3:.2f},{4:.2f},{5:.3f}\n'.format(i + 1,
+                                                                                           box_location[0],
+                                                                                           box_location[1],
+                                                                                           box_location[2] - box_location[0],
+                                                                                           box_location[3] - box_location[1],
                                                                                            label_score)
-        frame_info += per_object_prediction_info
+        frame_info_list.append(per_object_prediction_info)
 
-    return annotated_image, - start + stop, frame_info + '\n'
+    return annotated_image, - start + stop, frame_info_list
 
 
 def print_help():
