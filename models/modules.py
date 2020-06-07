@@ -20,7 +20,6 @@ class ConvBNAct(nn.Module):
         self.BN = nn.BatchNorm2d(self.out_planes)
 
         # parameters initialization
-        '''
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -29,11 +28,10 @@ class ConvBNAct(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
-        '''
 
     def forward(self, x):
         x = self.Conv(x)
-        x = self.BN(x)
+        # x = self.BN(x)
         x = self.act(x)
 
         return x
@@ -84,9 +82,10 @@ class DualAdaptivePooling(nn.Module):
 
         # multiple branches for feature extraction
         self.conv_astrous1 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=1, dilation=1)
-        self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=2, dilation=2)
+        self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=3, dilation=3)
 
-        self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
+        # self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
+        self.pool = nn.AdaptiveAvgPool2d(output_size=self.adaptive_size)
         self.transition = nn.Conv2d(128 * 2, self.outplane, kernel_size=1)
         self.act = Mish()
 
@@ -95,12 +94,10 @@ class DualAdaptivePooling(nn.Module):
         astrous2 = self.conv_astrous2(x)
 
         feat = torch.cat([astrous1, astrous2], dim=1)
-
+        feat = self.transition(self.act(feat))
         canonical_feat = self.pool(self.act(feat))
 
-        feat = self.transition(canonical_feat)
-
-        return self.act(feat)
+        return canonical_feat
 
 
 class AdaptivePooling(nn.Module):

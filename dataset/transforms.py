@@ -441,7 +441,7 @@ def transform_richer(image, boxes, labels, split, config):
             # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
             # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
             if random.random() < 0.25 and 'expand' in operation_list:
-                new_image, new_boxes = expand(new_image, boxes, filler=mean, max_scale=2.0)
+                new_image, new_boxes = expand(new_image, boxes, filler=mean, max_scale=4.0)
 
             # Randomly crop image (zoom in)
             if random.random() < 0.25 and 'random_crop' in operation_list:
@@ -478,7 +478,7 @@ def bof_augment(images, boxes, labels, config):
     new_boxes = list()
     resize_dims = config.model['input_size']
     if 'random_shape' in operation_list:
-        s = resize_dims[np.random.randint(0, len(resize_dims))]
+        s = resize_dims[np.random.randint(0, len(resize_dims) - 1)]
         resize_dim = (s, s)
     else:
         if isinstance(resize_dims, list):

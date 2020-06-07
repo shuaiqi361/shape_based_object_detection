@@ -9,22 +9,22 @@ from .modules import Mish, AdaptivePooling, Residual, ConvBNAct, DualAdaptivePoo
 
 
 class DarkBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, n_blocks):
+    def __init__(self, in_planes, n_blocks):
         super(DarkBlock, self).__init__()
         self.in_planes = in_planes  # 64
-        self.out_planes = out_planes  # 128
+        # self.out_planes = out_planes  # 128
         self.n_blocks = n_blocks
         # self.Conv = ConvBNAct
         # self.Residual = Residual
         self.Block = self.__make_block__(self.n_blocks)
-        self.transition = nn.Conv2d(self.in_planes, self.out_planes,
-                                    kernel_size=3, padding=1, stride=2)
+        # self.transition = nn.Conv2d(self.in_planes, self.out_planes,
+        #                             kernel_size=3, padding=1, stride=2)
 
     def __make_block__(self, n_blocks):
         block = []
         for i in range(n_blocks):
             layer = self.__make_layers__(ConvBNAct, Residual)
-            block.append(layer)
+            block += layer
 
         return nn.Sequential(*block)
 
@@ -34,41 +34,48 @@ class DarkBlock(nn.Module):
         layers.append(conv_block(self.in_planes // 2, self.in_planes, kernel_size=3, padding=1))
         layers.append(residual_block(self.in_planes))
 
-        return nn.Sequential(*layers)
+        return layers
 
     def forward(self, x):
         # n_channels = x.size(1)
         # x0 = x[:, :n_channels // 2, :, :]
         # x1 = x[:, n_channels // 2:, :, :]
         feats = self.Block(x)
-        trans_feats = self.transition(feats)
 
-        return feats, trans_feats
+        return feats
 
 
-class CSPDarknetBase(nn.Module):
+class DarknetBase(nn.Module):
     """
     VGG base convolutions to produce lower-level feature maps
     Feel free to substitute with other pre-trained backbones
     """
 
     def __init__(self):
-        super(CSPDarknetBase, self).__init__()
+        super(DarknetBase, self).__init__()
 
         self.conv1_1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.BN1 = nn.BatchNorm2d(32)
+        # self.BN1 = nn.BatchNorm2d(32)
         self.conv1_2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=2)  # (256, 256)
-        self.BN2 = nn.BatchNorm2d(64)
+        # self.BN2 = nn.BatchNorm2d(64)
 
-        self.DarkB1 = DarkBlock(64, 128, 1)
+        self.DarkB1 = DarkBlock(64, 1)
+        self.transit_1 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=2)
         self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128)  # (128, 128)
 
-        self.DarkB2 = DarkBlock(128, 256, 2)  # (64, 64)
-        self.DarkB3 = DarkBlock(256, 512, 4)  # (32, 32)
-        self.DarkB4 = DarkBlock(512, 512, 4)  # (16, 16)
-        self.DarkB5 = DarkBlock(512, 1024, 4)  # (8, 8)
-        self.DarkB6 = DarkBlock(1024, 1024, 2)
+        self.DarkB2 = DarkBlock(128, 4)  # (64, 64)
+        self.transit_2 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=2)
 
+        self.DarkB3 = DarkBlock(256, 4)  # (32, 32)
+        self.transit_3 = nn.Conv2d(256, 512, kernel_size=3, padding=1, stride=2)
+
+        self.DarkB4 = DarkBlock(512, 4)  # (16, 16)
+        self.transit_4 = nn.Conv2d(512, 512, kernel_size=3, padding=1, stride=2)
+
+        self.DarkB5 = DarkBlock(512, 3)  # (8, 8)
+        self.transit_5 = nn.Conv2d(512, 256, kernel_size=3, padding=1, stride=2)
+
+        self.DarkB6 = DarkBlock(256, 3)
         self.mish = Mish()
 
     def forward(self, image):
@@ -77,16 +84,16 @@ class CSPDarknetBase(nn.Module):
         :param image: images, a tensor of dimensions (N, 3, 512, 512)
         :return: lower-level feature maps conv4_3 and conv7
         """
-        out = self.mish(self.BN1(self.conv1_1(image)))  # (N, 64, 512, 512)
-        out = self.mish(self.BN2(self.conv1_2(out)))  # (N, 128, 256, 256)
-        _, DB1_feats = self.DarkB1(out)  # (N, 256, 128, 128)
-        _, DB2_feats = self.DarkB2(self.adap_pool(DB1_feats))  # (N, 256, 64, 64)
-        DB3, DB3_feats = self.DarkB3(DB2_feats)  # (N, 256, 64, 64), (N, 512, 32, 32)
-        DB4, DB4_feats = self.DarkB4(DB3_feats)  # (N, 512, 32, 32), (N, 512, 16, 16)
-        DB5, DB5_feats = self.DarkB5(DB4_feats)  # (N, 512, 16, 16), (N, 1024, 8, 8)
-        DB6, _ = self.DarkB6(DB5_feats)  # (N, 1024, 8, 8)
+        out = self.mish(self.conv1_1(image))  # (N, 64, 512, 512)
+        out = self.mish(self.conv1_2(out))  # (N, 128, 256, 256)
+        DB1_feats = self.DarkB1(out)  # (N, 256, 128, 128)
+        DB2_feats = self.DarkB2(self.adap_pool(self.mish(self.transit_1(DB1_feats))))  # (N, 256, 128, 128)
+        DB3_feats = self.DarkB3(self.mish(self.transit_2(DB2_feats)))  # (N, 256, 64, 64)
+        DB4_feats = self.DarkB4(self.mish(self.transit_3(DB3_feats)))  # (N, 512, 32, 32)
+        DB5_feats = self.DarkB5(self.mish(self.transit_4(DB4_feats)))  # (N, 512, 16, 16)
+        DB6_feats = self.DarkB6(self.mish(self.transit_5(DB5_feats)))  # (N, 1024, 8, 8)
 
-        return DB3, DB4, DB5, DB6
+        return DB3_feats, DB4_feats, DB5_feats, DB6_feats
 
 
 class TCBConvolutions(nn.Module):
@@ -104,7 +111,7 @@ class TCBConvolutions(nn.Module):
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
                               'DB5': 512,
-                              'DB6': 1024}
+                              'DB6': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.tcb_conv4_3 = TCB(self.feat_channels['DB3'], self.feat_channels['DB4'], internal_channels)
@@ -259,7 +266,7 @@ class ARMConvolutions(nn.Module):
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
                               'DB5': 512,
-                              'DB6': 1024}
+                              'DB6': 256}
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'DB3': 3,
@@ -381,7 +388,7 @@ class ODMConvolutions(nn.Module):
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
                               'DB5': 512,
-                              'DB6': 1024}
+                              'DB6': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
@@ -479,7 +486,7 @@ class RefineDetDark(nn.Module):
         super(RefineDetDark, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
-        self.base = CSPDarknetBase()
+        self.base = DarknetBase()
         self.theta = 0.01
 
         self.arm_convs = ARMConvolutions()
@@ -536,10 +543,10 @@ class RefineDetDark(nn.Module):
                      'DB5': [16, 16],
                      'DB6': [8, 8]}
 
-        obj_scales = {'DB3': 0.04,
-                      'DB4': 0.125,
-                      'DB5': 0.32,
-                      'DB6': 0.64}
+        obj_scales = {'DB3': 0.06,
+                      'DB4': 0.15,
+                      'DB5': 0.3,
+                      'DB6': 0.6}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'DB3': [1., 2., 0.5],
@@ -595,7 +602,7 @@ class RefineDetDarkLoss(nn.Module):
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.1, reduce=False)
+        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.05, reduce=False)
         # self.Focal_loss = focal_loss
 
     def compute_arm_loss(self, arm_locs, arm_scores, boxes, labels):
@@ -647,7 +654,7 @@ class RefineDetDarkLoss(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
 
             # Store converted labels 0, 1
             # label_for_each_prior[label_for_each_prior > 0] = 1
