@@ -124,12 +124,10 @@ class AdaptivePooling(nn.Module):
         astrous3 = self.conv_astrous3(x)
         # print(astrous1.size(), astrous2.size(), astrous3.size())
         feat = torch.cat([astrous1, astrous2, astrous3], dim=1)
-        # feat = astrous1 + astrous2 + astrous3
+        feat = self.transition(self.act(feat))
         canonical_feat = self.pool(self.act(feat))
 
-        feat = self.transition(canonical_feat)
-
-        return self.act(feat)
+        return canonical_feat
 
 
 class AttentionHead(nn.Module):
