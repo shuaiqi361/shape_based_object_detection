@@ -601,8 +601,8 @@ class RefineDetDarkLoss(nn.Module):
         self.arm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        # self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.05, reduce=False)
+        self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.05, reduce=False)
         # self.Focal_loss = focal_loss
 
     def compute_arm_loss(self, arm_locs, arm_scores, boxes, labels):
@@ -800,8 +800,8 @@ class RefineDetDarkLoss(nn.Module):
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
-        # conf_loss_all = self.odm_cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        conf_loss_all = self.odm_cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
         conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
 
         # We already know which priors are positive

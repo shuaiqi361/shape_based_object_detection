@@ -92,14 +92,14 @@ class COCO17Dataset(Dataset):
     A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
     """
 
-    def __init__(self, data_folder, split, input_size, config):
+    def __init__(self, data_folder, split, config):
         """
         :param data_folder: folder where data files are stored
         :param split: split, one of 'TRAIN' or 'TEST'
         :param keep_difficult: keep or discard objects that are considered difficult to detect?
         """
         self.split = split.upper()
-        self.input_size = input_size
+        # self.input_size = input_size
         assert config is not None
         assert self.split in {'TRAIN', 'TEST', 'VAL'}
         self.config = config
