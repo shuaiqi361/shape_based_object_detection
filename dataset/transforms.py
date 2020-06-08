@@ -528,8 +528,8 @@ def bof_augment(images, boxes, labels, config):
     # n_boxes = temp_boxes.size(0)
     # rect_coord = []
     # for i in range(n_boxes):
-    #     coord = ((int(temp_boxes[i][0] * resize_dim), int(temp_boxes[i][1] * resize_dim)),
-    #              (int(temp_boxes[i][2] * resize_dim), int(temp_boxes[i][3] * resize_dim)))
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
     #     # rect_coord.append(coord)
     #     draw.rectangle(coord)
     # temp_image.show()
