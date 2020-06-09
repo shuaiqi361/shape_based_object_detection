@@ -5,7 +5,7 @@ import torchvision
 from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
-from .modules import Mish, AdaptivePooling, AttentionHead, AttentionHeadSplit
+from .modules import Mish, AdaptivePooling, AttentionHead, AttentionHeadSplit, DualAdaptivePooling
 
 
 class VGGBase(nn.Module):
@@ -30,7 +30,8 @@ class VGGBase(nn.Module):
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         # self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.pool3 = AdaptivePooling(256, 256, adaptive_size=64)
+        # self.pool3 = AdaptivePooling(256, 256, adaptive_size=64)
+        self.pool3 = DualAdaptivePooling(256, 256, adaptive_size=64)
 
         self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
         self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
@@ -49,7 +50,7 @@ class VGGBase(nn.Module):
         self.mish = Mish()
 
         # Load pretrained layers
-        self.load_pretrained_layers()
+        # self.load_pretrained_layers()
 
     def forward(self, image):
         """
@@ -779,7 +780,7 @@ class RefineDetBofLoss2(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
 
             # Store converted labels 0, 1
             # label_for_each_prior[label_for_each_prior > 0] = 1
