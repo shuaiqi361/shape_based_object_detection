@@ -18,6 +18,7 @@ class ConvBNAct(nn.Module):
 
         self.Conv = nn.Conv2d(self.in_planes, self.out_planes, kernel_size=self.kernel_size, padding=self.padding)
         self.BN = nn.BatchNorm2d(self.out_planes)
+        self.GN = nn.GroupNorm(num_groups=32, num_channels=self.out_planes)
 
         # parameters initialization
         for m in self.modules():
@@ -37,13 +38,53 @@ class ConvBNAct(nn.Module):
         return x
 
 
+class ConvGNAct(nn.Module):
+    def __init__(self, in_planes, out_planes, kernel_size=3, padding=1, activation_type='Mish'):
+        super(ConvGNAct, self).__init__()
+        self.in_planes = in_planes
+        self.out_planes = out_planes
+        self.kernel_size = kernel_size
+        self.padding = padding
+        if activation_type.upper() == 'MISH':
+            self.act = Mish()
+        else:
+            self.act = nn.LeakyReLU()
+
+        self.Conv = nn.Conv2d(self.in_planes, self.out_planes, kernel_size=self.kernel_size, padding=self.padding)
+        self.BN = nn.BatchNorm2d(self.out_planes)
+        self.GN = nn.GroupNorm(num_groups=32, num_channels=self.out_planes)
+
+        # parameters initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                # nn.init.xavier_normal_(m.weight.data)
+                nn.init.kaiming_normal_(m.weight.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.GroupNorm):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def forward(self, x):
+        x = self.Conv(x)
+        x = self.GN(x)
+        x = self.act(x)
+
+        return x
+
+
 class Residual(nn.Module):
     def __init__(self, in_planes, activation_type='Mish'):
         super(Residual, self).__init__()
         self.in_planes = in_planes
         self.activation_type = activation_type
-        self.Conv1 = ConvBNAct(self.in_planes, self.in_planes // 2, kernel_size=1, padding=0)
-        self.Conv2 = ConvBNAct(self.in_planes // 2, self.in_planes, kernel_size=3, padding=1)
+        # self.Conv1 = ConvBNAct(self.in_planes, self.in_planes // 2, kernel_size=1, padding=0)
+        # self.Conv2 = ConvBNAct(self.in_planes // 2, self.in_planes, kernel_size=3, padding=1)
+        self.Conv1 = ConvGNAct(self.in_planes, self.in_planes // 2, kernel_size=1, padding=0)
+        self.Conv2 = ConvGNAct(self.in_planes // 2, self.in_planes, kernel_size=3, padding=1)
 
     def forward(self, x):
         res = x
@@ -72,30 +113,39 @@ class Mish(nn.Module):
 
 
 class DualAdaptivePooling(nn.Module):
-    def __init__(self, inplanes, outplanes=256, kernel_size=3, adaptive_size=64):
+    def __init__(self, inplanes, outplanes=256, kernel_size=3, adaptive_size=64, use_gn=False):
         super(DualAdaptivePooling, self).__init__()
         self.inplane = inplanes
         self.outplane = outplanes
         self.kernel_size = kernel_size
-
+        self.use_gn = use_gn
         self.adaptive_size = adaptive_size
 
         # multiple branches for feature extraction
         self.conv_astrous1 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=1, dilation=1)
+        self.GN1 = nn.GroupNorm(32, 128)
         self.conv_astrous2 = nn.Conv2d(self.inplane, 128, kernel_size=self.kernel_size, padding=3, dilation=3)
-
+        self.GN2 = nn.GroupNorm(32, 128)
         # self.pool = nn.AdaptiveMaxPool2d(output_size=self.adaptive_size)
         self.pool = nn.AdaptiveAvgPool2d(output_size=self.adaptive_size)
         self.transition = nn.Conv2d(128 * 2, self.outplane, kernel_size=1)
+        self.GN3 = nn.GroupNorm(32, self.outplane)
         self.act = Mish()
 
     def forward(self, x):
-        astrous1 = self.conv_astrous1(x)
-        astrous2 = self.conv_astrous2(x)
+        if self.use_gn:
+            astrous1 = self.GN1(self.conv_astrous1(x))
+            astrous2 = self.GN2(self.conv_astrous2(x))
+            feat = torch.cat([astrous1, astrous2], dim=1)
+            feat = self.transition(self.act(feat))
+            canonical_feat = self.pool(self.act(self.GN3(feat)))
+        else:
+            astrous1 = self.conv_astrous1(x)
+            astrous2 = self.conv_astrous2(x)
 
-        feat = torch.cat([astrous1, astrous2], dim=1)
-        feat = self.transition(self.act(feat))
-        canonical_feat = self.pool(self.act(feat))
+            feat = torch.cat([astrous1, astrous2], dim=1)
+            feat = self.transition(self.act(feat))
+            canonical_feat = self.pool(self.act(feat))
 
         return canonical_feat
 

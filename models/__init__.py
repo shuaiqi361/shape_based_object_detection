@@ -8,6 +8,7 @@ from .RefineBOF import RefineDetBof, RefineDetBofLoss
 from .RefineBOF2 import RefineDetBof2, RefineDetBofLoss2
 from .RefineBOFTraffic import RefineDetBofTraffic, RefineDetBofTrafficLoss
 from .DarkRefineDet import RefineDetDark, RefineDetDarkLoss
+from .DarkRefineScratchDet import RefineDetScratchDark, RefineDetScratchDarkLoss
 
 
 def model_entry(config):
@@ -47,6 +48,9 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'REFINEDETDARK':
         print('Loading RefineDet with customized CSPDarkNet53 ......')
         return RefineDetDark(config['n_classes'], config=config), RefineDetDarkLoss
+    elif config.model['arch'].upper() == 'REFINEDETSCRATCHDARK':
+        print('Loading RefineDet with customized DarkNet53 with Group Norm ......')
+        return RefineDetScratchDark(config['n_classes'], config=config), RefineDetScratchDarkLoss
     else:
         print('Try other models.')
         raise NotImplementedError
