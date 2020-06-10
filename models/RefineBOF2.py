@@ -50,7 +50,7 @@ class VGGBase(nn.Module):
         self.mish = Mish()
 
         # Load pretrained layers
-        # self.load_pretrained_layers()
+        self.load_pretrained_layers()
 
     def forward(self, image):
         """
