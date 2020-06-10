@@ -157,7 +157,7 @@ class TCB(nn.Module):
         """
         super(TCB, self).__init__()
         self.is_groupnorm = is_groupnorm
-        self.use_bias = not self.is_batchnorm
+        self.use_bias = not self.is_groupnorm
         self.out_channels = internal_channels
 
         self.conv1 = nn.Conv2d(lateral_channels, internal_channels, kernel_size=3, padding=1, bias=self.use_bias)
@@ -218,7 +218,7 @@ class TCBTail(nn.Module):
         """
         super(TCBTail, self).__init__()
         self.is_groupnorm = is_groupnorm
-        self.use_bias = not self.is_batchnorm
+        self.use_bias = not self.is_groupnorm
         self.out_channels = internal_channels
 
         self.conv1 = nn.Conv2d(lateral_channels, internal_channels, kernel_size=3, padding=1, bias=self.use_bias)
@@ -227,7 +227,7 @@ class TCBTail(nn.Module):
 
         self.mish = Mish()
 
-        if self.is_batchnorm:
+        if self.is_groupnorm:
             self.gn1 = nn.GroupNorm(32, internal_channels)
             self.gn2 = nn.GroupNorm(32, internal_channels)
             self.gn3 = nn.GroupNorm(32, internal_channels)
@@ -247,7 +247,7 @@ class TCBTail(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, lateral):
-        if self.is_batchnorm:
+        if self.is_groupnorm:
             lateral_out = self.mish(self.gn1(self.conv1(lateral)))
             out = self.mish(self.gn2(self.conv2(lateral_out)))
             out = self.mish(self.gn3(self.conv3(out)))
