@@ -54,28 +54,28 @@ class DarknetBase(nn.Module):
         self.conv1_3 = nn.Conv2d(64, 64, kernel_size=3, padding=1, stride=2)  # (256, 256)
         self.GN3 = nn.GroupNorm(16, 64)
 
-        self.DarkB1 = DarkBlock(64, 2)
+        self.DarkB1 = DarkBlock(64, 1)
         self.transit_1 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=2)
         self.GN_t1 = nn.GroupNorm(32, 128)
         self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128, use_gn=True)  # (128, 128)
 
-        self.DarkB2 = DarkBlock(128, 4)  # (64, 64)
+        self.DarkB2 = DarkBlock(128, 3)  # (64, 64)
         self.transit_2 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=2)
         self.GN_t2 = nn.GroupNorm(32, 256)
 
-        self.DarkB3 = DarkBlock(256, 4)  # (32, 32)
+        self.DarkB3 = DarkBlock(256, 2)  # (32, 32)
         self.transit_3 = nn.Conv2d(256, 512, kernel_size=3, padding=1, stride=2)
         self.GN_t3 = nn.GroupNorm(32, 512)
 
-        self.DarkB4 = DarkBlock(512, 3)  # (16, 16)
-        self.transit_4 = nn.Conv2d(512, 512, kernel_size=3, padding=1, stride=2)
-        self.GN_t4 = nn.GroupNorm(32, 512)
+        self.DarkB4 = DarkBlock(512, 2)  # (16, 16)
+        self.transit_4 = nn.Conv2d(512, 256, kernel_size=3, padding=1, stride=2)
+        self.GN_t4 = nn.GroupNorm(32, 256)
 
-        self.DarkB5 = DarkBlock(512, 2)  # (8, 8)
-        self.transit_5 = nn.Conv2d(512, 256, kernel_size=3, padding=1, stride=2)
-        self.GN_t5 = nn.GroupNorm(32, 256)
+        self.DarkB5 = DarkBlock(256, 2)  # (8, 8)
+        self.transit_5 = nn.Conv2d(256, 192, kernel_size=3, padding=1, stride=2)
+        self.GN_t5 = nn.GroupNorm(32, 192)
 
-        self.DarkB6 = DarkBlock(256, 2)
+        self.DarkB6 = DarkBlock(192, 2)
         self.mish = Mish()
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -115,7 +115,7 @@ class TCBConvolutions(nn.Module):
     Convolutions to predict class scores and bounding boxes using lower and higher-level feature maps.
     """
 
-    def __init__(self, internal_channels=256):
+    def __init__(self, internal_channels=192):
         """
         :param n_classes: number of different types of objects
         """
@@ -123,8 +123,8 @@ class TCBConvolutions(nn.Module):
 
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
-                              'DB5': 512,
-                              'DB6': 256}
+                              'DB5': 256,
+                              'DB6': 192}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.tcb_conv4_3 = TCB(self.feat_channels['DB3'], self.feat_channels['DB4'], internal_channels)
@@ -136,11 +136,6 @@ class TCBConvolutions(nn.Module):
         """
         Forward propagation. To ge initial offsets w.r.t. anchors anc binary labels
 
-        :param conv4_3_feats: conv4_3 feature map, a tensor of dimensions (N, 512, 64, 64)
-        :param conv7_feats: conv7 feature map, a tensor of dimensions (N, 1024, 32, 32)
-        :param conv8_2_feats: conv8_2 feature map, a tensor of dimensions (N, 512, 16, 16)
-        :param conv9_2_feats: conv8_2 feature map, a tensor of dimensions (N, 512, 8, 8)
-        :return: 16320 locations and class scores (i.e. w.r.t each prior box) for each image
         """
         # batch_size = conv4_3_feats.size(0)
 
@@ -160,7 +155,7 @@ class TCB(nn.Module):
     into the form required by the ODM, so that the ODM can share features from the ARM.
     """
 
-    def __init__(self, lateral_channels, channels, internal_channels=256, is_groupnorm=True):
+    def __init__(self, lateral_channels, channels, internal_channels=192, is_groupnorm=True):
         """
         :param lateral_channels: forward feature channels
         :param channels: pyramidal feature channels
@@ -221,11 +216,11 @@ class TCBTail(nn.Module):
     into the form required by the ODM, so that the ODM can share features from the ARM.
     """
 
-    def __init__(self, lateral_channels, internal_channels=256, is_groupnorm=True):
+    def __init__(self, lateral_channels, internal_channels=192, is_groupnorm=True):
         """
         :param lateral_channels: forward feature channels
         :param channels: pyramidal feature channels
-        :param internal_channels: internal conv channels fix to 256
+        :param internal_channels: internal conv channels fix to 192
         :param is_batchnorm: adding batch norm
         """
         super(TCBTail, self).__init__()
@@ -286,8 +281,8 @@ class ARMConvolutions(nn.Module):
         self.n_classes = 2  # foreground and background
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
-                              'DB5': 512,
-                              'DB6': 256}
+                              'DB5': 256,
+                              'DB6': 192}
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'DB3': 3,
@@ -393,7 +388,7 @@ class ODMConvolutions(nn.Module):
     Convolutions to predict class scores and bounding boxes using lower and higher-level feature maps.
     """
 
-    def __init__(self, n_classes, internal_channels=256):
+    def __init__(self, n_classes, internal_channels=192):
         """
         :param n_classes: number of different types of objects
         """
@@ -409,8 +404,8 @@ class ODMConvolutions(nn.Module):
 
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
-                              'DB5': 512,
-                              'DB6': 256}
+                              'DB5': 256,
+                              'DB6': 192}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
