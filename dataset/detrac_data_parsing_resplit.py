@@ -60,7 +60,7 @@ def parse_annotation(annotation_path, image_folder, down_sample=False):
         target_list = objects.find('target_list')
         for target in target_list:
             uni_name = target.find('attribute').attrib['vehicle_type']
-            if uni_name not in traffic_labels:
+            if uni_name not in traffic_labels_all:
                 continue
             else:
                 # uni_label = traffic_label_map[uni_name]
@@ -247,10 +247,10 @@ def create_data_lists_detrac(root_path, output_folder):
 
 if __name__ == '__main__':
     # root_path = '/home/keyi/research/data/DETRAC'
-    # output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/DETRAC'
-    root_path = '/home/keyi/research/data/DETRAC'
-    output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
-    # root_path = '/home/keyi/Documents/Data/DETRAC'
-    # output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC'
+    # output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/DETRAC_bin'
+    # root_path = '/home/keyi/research/data/DETRAC'
+    # output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
+    root_path = '/home/keyi/Documents/Data/DETRAC'
+    output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC_bin'
 
     create_data_lists_detrac(root_path, output_folder)
