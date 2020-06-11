@@ -48,9 +48,9 @@ class DarknetBase(nn.Module):
         super(DarknetBase, self).__init__()
 
         self.conv1_1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.GN1 = nn.GroupNorm(num_groups=8, num_channels=32)
+        self.GN1 = nn.GroupNorm(num_groups=16, num_channels=32)
         self.conv1_2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1)  # (512+, 512+)
-        self.GN2 = nn.GroupNorm(8, 64)
+        self.GN2 = nn.GroupNorm(16, 64)
         self.conv1_3 = nn.Conv2d(64, 64, kernel_size=3, padding=1, stride=2)  # (256, 256)
         self.GN3 = nn.GroupNorm(16, 64)
 
@@ -77,6 +77,18 @@ class DarknetBase(nn.Module):
 
         self.DarkB6 = DarkBlock(256, 2)
         self.mish = Mish()
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.kaiming_normal_(m.weight.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.GroupNorm):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, image):
         """
@@ -84,9 +96,9 @@ class DarknetBase(nn.Module):
         :param image: images, a tensor of dimensions (N, 3, 512, 512)
         :return: lower-level feature maps conv4_3 and conv7
         """
-        out = self.mish(self.conv1_1(image))  # (N, 64, 512, 512)
-        out = self.mish(self.conv1_2(out))  # (N, 128, 512, 512)
-        out = self.mish(self.conv1_3(out))  # (N, 128, 256, 256)
+        out = self.mish(self.GN1(self.conv1_1(image)))  # (N, 64, 512, 512)
+        out = self.mish(self.GN2(self.conv1_2(out)))  # (N, 128, 512, 512)
+        out = self.mish(self.GN3(self.conv1_3(out)))  # (N, 128, 256, 256)
         DB1_feats = self.DarkB1(out)  # (N, 256, 128, 128)
         DB2_feats = self.DarkB2(self.adap_pool(self.mish(self.GN_t1(self.transit_1(DB1_feats)))))  # (N, 256, 128, 128)
         DB3_feats = self.DarkB3(self.mish(self.GN_t2(self.transit_2(DB2_feats))))  # (N, 256, 64, 64)
@@ -180,8 +192,8 @@ class TCB(nn.Module):
             if isinstance(m, nn.Conv2d):
                 # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 # m.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.xavier_normal_(m.weight.data)
-                nn.init.kaiming_normal_(m.weight.data)
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.kaiming_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -237,8 +249,8 @@ class TCBTail(nn.Module):
             if isinstance(m, nn.Conv2d):
                 # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 # m.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.xavier_normal_(m.weight.data)
-                nn.init.kaiming_normal_(m.weight.data)
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.kaiming_normal_(m.weight.data)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
