@@ -32,12 +32,12 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/RefineDet_traffic_001'
+root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/RefineDet_traffic_003'
 folder_path = '/home/keyi/Documents/Data/DETRAC/Insight-MVT_Annotation_Test'
-model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-10.pth.tar')
+model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-30.pth.tar')
 
 meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
-output_path = os.path.join(root_path, 'live_results/Hwy7')
+output_path = os.path.join(root_path, 'live_results/DETRAC')
 output_file_flag = True
 output_video_flag = True
 
@@ -65,7 +65,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
 
     width = 960
     height = 540
-    fps = 30  # output video configuration
+    fps = 25  # output video configuration
 
     folder_name = folder_path.split('/')[-1]
 
@@ -85,7 +85,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
 
-        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.1, 0.45, 500,
+        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.15, 0.35, 500,
                                                                 rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
@@ -127,7 +127,8 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
     #                                            priors_cxcy=model.priors_cxcy)
     det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
                                                max_overlap=max_overlap, top_k=top_k,
-                                               priors_cxcy=model.priors_cxcy, prior_positives_idx=prior_positives_idx)
+                                               priors_cxcy=model.priors_cxcy, prior_positives_idx=prior_positives_idx,
+                                               final_nms=True)
     stop = time.time()
     # Move detections to the CPU
     det_boxes_percentage = det_boxes[0].to('cpu')

@@ -3,6 +3,7 @@ import torch.nn as nn
 from dataset.transforms import *
 import torch.nn.functional as F
 from torchvision.ops import nms
+from operators.iou_utils import diounms
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -97,7 +98,8 @@ def detect_objects(predicted_locs, predicted_scores, min_score, max_overlap, top
     return all_images_boxes, all_images_labels, all_images_scores
 
 
-def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy, prior_positives_idx=None):
+def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy,
+           prior_positives_idx=None, final_nms=True):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -183,6 +185,7 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
                                                     index=torch.nonzero(score_above_min_score).squeeze(dim=1))
 
             anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
+            # anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
 
             # Store only unsuppressed boxes for this class
             # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),
@@ -202,10 +205,11 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
         image_scores = torch.cat(image_scores, dim=0)  # (n_objects)
         n_objects = image_scores.size(0)
 
-        final_nms_idx = nms(image_boxes, image_scores, 0.75)
-        image_scores = image_scores[final_nms_idx]
-        image_labels = image_labels[final_nms_idx]
-        image_boxes = image_boxes[final_nms_idx, :]
+        if final_nms:
+            final_nms_idx = nms(image_boxes, image_scores, 0.75)
+            image_scores = image_scores[final_nms_idx]
+            image_labels = image_labels[final_nms_idx]
+            image_boxes = image_boxes[final_nms_idx, :]
 
         # Keep only the top k objects
         if n_objects > top_k:
