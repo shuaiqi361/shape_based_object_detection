@@ -99,8 +99,10 @@ def main():
             init_model = checkpoint['model']
             reuse_layers = {}
             for param_tensor in init_model.state_dict().keys():
-                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
-                        or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
+                # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
+                #         or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
+                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('tcb_convs.') \
+                        or param_tensor.startswith('base.'):
                     reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
                     print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
             model.load_state_dict(reuse_layers, strict=False)

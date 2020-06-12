@@ -375,10 +375,10 @@ class ARMConvolutions(nn.Module):
                               'conv9_2': 256}
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 3,
-                   'conv7': 3,
-                   'conv8_2': 3,
-                   'conv9_2': 3}
+        n_boxes = {'conv4_3': 2,
+                   'conv7': 5,
+                   'conv8_2': 5,
+                   'conv9_2': 5}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv4_3 = nn.Conv2d(self.feat_channels['conv4_3'], n_boxes['conv4_3'] * 4,
@@ -496,10 +496,10 @@ class ODMConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 3,
-                   'conv7': 3,
-                   'conv8_2': 3,
-                   'conv9_2': 3}
+        n_boxes = {'conv4_3': 2,
+                   'conv7': 5,
+                   'conv8_2': 5,
+                   'conv9_2': 5}
 
         self.feat_channels = {'conv4_3': 512,
                               'conv7': 1024,
@@ -685,16 +685,16 @@ class RefineDetBofTraffic(nn.Module):
                      'conv8_2': [14, 24],
                      'conv9_2': [7, 12]}
 
-        obj_scales = {'conv4_3': 0.05,
-                      'conv7': 0.1,
-                      'conv8_2': 0.25,
-                      'conv9_2': 0.5}
+        obj_scales = {'conv4_3': 0.025,
+                      'conv7': 0.15,
+                      'conv8_2': 0.35,
+                      'conv9_2': 0.6}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
-        aspect_ratios = {'conv4_3': [1., 2., 3.],
-                         'conv7': [1., 2., 3.],
-                         'conv8_2': [1., 2., 3.],
-                         'conv9_2': [1., 2., 3.]}
+        aspect_ratios = {'conv4_3': [1.],
+                         'conv7': [1., 2., 3., 0.5],
+                         'conv8_2': [1., 2., 3., 0.5],
+                         'conv9_2': [1., 2., 3., 0.5]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -710,6 +710,15 @@ class RefineDetBofTraffic(nn.Module):
                         for fac in scale_factor:
                             prior_boxes.append([cx, cy, obj_scales[fmap] * fac * sqrt(ratio),
                                                 obj_scales[fmap] * fac / sqrt(ratio)])
+
+                        if ratio == 1.:
+                            try:
+                                # use the geometric mean to calculate the additional scale for each level of fmap
+                                additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
+                            # For the last object scale, there is no "next" scale
+                            except IndexError:
+                                additional_scale = 0.75
+                            prior_boxes.append([cx, cy, additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
         prior_boxes.clamp_(0, 1)
@@ -743,8 +752,8 @@ class RefineDetBofTrafficLoss(nn.Module):
         self.arm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        # self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.1, reduce=False)
+        self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.1, reduce=False)
         # self.Focal_loss = focal_loss
 
     def compute_arm_loss(self, arm_locs, arm_scores, boxes, labels):
@@ -796,7 +805,7 @@ class RefineDetBofTrafficLoss(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold-0.1] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.2] = 0
 
             # Store converted labels 0, 1
             # label_for_each_prior[label_for_each_prior > 0] = 1
@@ -906,7 +915,7 @@ class RefineDetBofTrafficLoss(nn.Module):
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
             # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold + 0.2] = 0
 
             # Store
             true_classes[i] = label_for_each_prior
@@ -942,8 +951,8 @@ class RefineDetBofTrafficLoss(nn.Module):
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
-        # conf_loss_all = self.odm_cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        conf_loss_all = self.odm_cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
         conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
 
         # We already know which priors are positive
