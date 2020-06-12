@@ -915,7 +915,7 @@ class RefineDetBofTrafficLoss(nn.Module):
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
             # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
-            label_for_each_prior[overlap_for_each_prior < self.threshold + 0.2] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
 
             # Store
             true_classes[i] = label_for_each_prior
