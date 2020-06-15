@@ -672,7 +672,7 @@ class RefineDetScratchDarkLoss(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.15] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.2] = 0
 
             # Store converted labels 0, 1
             # label_for_each_prior[label_for_each_prior > 0] = 1
