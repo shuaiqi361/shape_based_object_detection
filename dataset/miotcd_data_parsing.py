@@ -82,6 +82,16 @@ def create_data_lists_MIOTCD(root_path, output_folder):
         image_path = os.path.join(image_folder, k + '.jpg')
         train_images.append(image_path)
         train_objects.append(img)
+
+        # boxes = img['bbox']
+        # img_masked = cv2.imread(image_path)
+        # for i in range(len(boxes)):
+        #     region = boxes[i]
+        #     cv2.rectangle(img_masked, (region[0], region[1]), (region[2], region[3]), (0, 255, 0), 2)
+        #
+        # cv2.imshow('regions', img_masked)
+        # cv2.waitKey(0)
+
         # for c in range(len(traffic_labels)):
         #     list_train_counts[c + 1] += img['labels'].count(c + 1)
 
