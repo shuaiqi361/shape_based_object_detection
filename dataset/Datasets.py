@@ -301,8 +301,9 @@ class DetracDataset(Dataset):
         # Read image, and remove ignored regions
         img = cv2.imread(self.images[i])
 
-        for region in ignore_regions:
-            cv2.rectangle(img, (region[0], region[1]), (region[2], region[3]), (127, 127, 127), -1)
+        # temporarily using ignored regions for training
+        # for region in ignore_regions:
+        #     cv2.rectangle(img, (region[0], region[1]), (region[2], region[3]), (127, 127, 127), -1)
 
         # cv2.imshow('inputs', img)
         # cv2.waitKey()
