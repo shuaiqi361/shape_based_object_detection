@@ -68,22 +68,22 @@ def create_data_lists_MIOTCD(root_path, output_folder):
         difficult = 0
 
         if image_id not in all_images_dict.keys():
-            all_images_dict[image_id] = {'labels': [label],
-                                         'boxes': [[xmin, ymin, xmax, ymax]], 'difficulties': [difficult]}
+            all_images_dict[image_id] = {'labels': [label], 'image_id': image_id,
+                                         'bbox': [[xmin, ymin, xmax, ymax]], 'difficulties': [difficult]}
         else:
             all_images_dict[image_id]['labels'].append(label)
-            all_images_dict[image_id]['boxes'].append([xmin, ymin, xmax, ymax])
+            all_images_dict[image_id]['bbox'].append([xmin, ymin, xmax, ymax])
             all_images_dict[image_id]['difficulties'].append(difficult)
 
     train_images = list()
     train_objects = list()
     # list_train_counts = [0, 0, 0, 0, 0, 0, 0]
-    # for k, img in all_images_dict.items():
-    #     image_path = os.path.join(image_folder, k + '.jpg')
-    #     train_images.append(image_path)
-    #     train_objects.append(img)
-    #     for c in range(len(traffic_labels)):
-    #         list_train_counts[c + 1] += img['labels'].count(c + 1)
+    for k, img in all_images_dict.items():
+        image_path = os.path.join(image_folder, k + '.jpg')
+        train_images.append(image_path)
+        train_objects.append(img)
+        # for c in range(len(traffic_labels)):
+        #     list_train_counts[c + 1] += img['labels'].count(c + 1)
 
     assert len(train_objects) == len(train_images)
     # Save to file

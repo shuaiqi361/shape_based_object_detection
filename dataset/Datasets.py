@@ -171,18 +171,17 @@ class TrafficDataset(Dataset):
     Input: list of traffic dataset json files
     """
 
-    def __init__(self, data_folder_list, split, input_size, config):
+    def __init__(self, data_folder_list, split, config):
         """
         :param data_folder: folder where data files are stored
         :param split: split, one of 'TRAIN' or 'TEST'
         :param keep_difficult: keep or discard objects that are considered difficult to detect?
         """
         self.split = split.upper()
-        self.input_size = input_size
+        # self.input_size = input_size
         assert self.split in {'TRAIN', 'TEST', 'VAL'}
         self.config = config
         self.data_folder_list = data_folder_list.split(' ')
-        self.input_size = input_size
         self.images = list()
         self.objects = list()
 
@@ -211,15 +210,18 @@ class TrafficDataset(Dataset):
 
         # Read objects in this image (bounding boxes, labels, difficulties)
         objects = self.objects[i]
-        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
+        boxes = torch.FloatTensor(objects['bbox'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
         ids = objects['image_id']
         difficulties = torch.LongTensor(objects['difficulties'])
 
         # Apply transformations
-        image, boxes, labels = transform(image, boxes, labels,
-                                         split=self.split,
-                                         resize_dim=self.input_size, config=self.config)
+        # image, boxes, labels = transform(image, boxes, labels,
+        #                                  split=self.split,
+        #                                  resize_dim=self.input_size, config=self.config)
+        image, boxes, labels = transform_richer(image, boxes, labels,
+                                                split=self.split,
+                                                config=self.config)
 
         return image, boxes, labels, ids, difficulties
 
@@ -252,7 +254,7 @@ class TrafficDataset(Dataset):
             ids.append(b[3])
             difficulties.append(b[4])
 
-        images = torch.stack(images, dim=0)
+        # images = torch.stack(images, dim=0)
 
         return images, boxes, labels, ids, difficulties
 
