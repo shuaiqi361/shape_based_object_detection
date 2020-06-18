@@ -376,7 +376,7 @@ class ARMConvolutions(nn.Module):
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'conv4_3': 2,
-                   'conv7': 5,
+                   'conv7': 4,
                    'conv8_2': 5,
                    'conv9_2': 5}
 
@@ -497,7 +497,7 @@ class ODMConvolutions(nn.Module):
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'conv4_3': 2,
-                   'conv7': 5,
+                   'conv7': 4,
                    'conv8_2': 5,
                    'conv9_2': 5}
 
@@ -612,10 +612,10 @@ class RefineDetBofTraffic(nn.Module):
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
         self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        nn.init.constant_(self.rescale_factors_conv4_3, 40.)
 
         self.rescale_factors_conv7 = nn.Parameter(torch.FloatTensor(1, 1024, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv7, 10.)
+        nn.init.constant_(self.rescale_factors_conv7, 20.)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -685,14 +685,14 @@ class RefineDetBofTraffic(nn.Module):
                      'conv8_2': [14, 24],
                      'conv9_2': [7, 12]}
 
-        obj_scales = {'conv4_3': 0.025,
+        obj_scales = {'conv4_3': 0.05,
                       'conv7': 0.15,
                       'conv8_2': 0.35,
-                      'conv9_2': 0.6}
+                      'conv9_2': 0.65}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'conv4_3': [1.],
-                         'conv7': [1., 2., 3., 0.5],
+                         'conv7': [1., 2., 0.5],
                          'conv8_2': [1., 2., 3., 0.5],
                          'conv9_2': [1., 2., 3., 0.5]}
 
@@ -717,7 +717,7 @@ class RefineDetBofTraffic(nn.Module):
                                 additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
                             # For the last object scale, there is no "next" scale
                             except IndexError:
-                                additional_scale = 0.75
+                                additional_scale = 0.8
                             prior_boxes.append([cx, cy, additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
@@ -915,7 +915,7 @@ class RefineDetBofTrafficLoss(nn.Module):
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
             # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
-            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
 
             # Store
             true_classes[i] = label_for_each_prior
