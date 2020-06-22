@@ -15,9 +15,9 @@ import json
 
 from scheduler import WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset, BaseModelVOCOCODataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset, BaseModelVOCOCODataset, DetracDataset
 from utils import create_logger, save_checkpoint
-from dataset.transforms import bof_augment
+from dataset.transforms import traffic_augment
 from models.utils import detect
 from metrics import AverageMeter, calculate_mAP
 
@@ -54,7 +54,7 @@ def main():
 
     config.n_classes = len(config.label_map)  # number of different types of objects
 
-    iterations = config.optimizer['max_iter'] * config.num_iter_flag
+    iterations = config.optimizer['max_iter']
     workers = config.workers
     val_freq = config.val_freq
     lr = config.optimizer['base_lr']
@@ -125,38 +125,47 @@ def main():
     # Custom dataloaders
     if config.data_name.upper() == 'COCO':
         train_dataset = COCO17Dataset(train_data_folder, split='train', input_size=input_size, config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
         test_dataset = COCO17Dataset(val_data_folder, split='val', input_size=input_size, config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batchsize, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOC':
         train_dataset = PascalVOCDataset(train_data_folder, split='train', input_size=input_size, config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batchsize, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'TRAFFIC':
-        train_dataset = TrafficDataset(train_data_folder, split='train', input_size=input_size, config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_dataset = TrafficDataset(train_data_folder, split='train', config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
-        test_dataset = TrafficDataset(val_data_folder, split='val', input_size=input_size, config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batchsize, shuffle=False,
+        test_dataset = TrafficDataset(val_data_folder, split='val', config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
+    elif config.data_name.upper() == 'DETRAC':
+        train_dataset = DetracDataset(train_data_folder, split='train', config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=False, drop_last=True)
+        test_dataset = DetracDataset(val_data_folder, split='val', config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOCOCO':
         train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batchsize, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     else:
@@ -190,9 +199,9 @@ def main():
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
-    epochs = iterations // (len(train_dataset) // config.batchsize)
+    epochs = iterations // (len(train_dataset) // config.batch_size)
 
-    # decay_lr_at = [it // (len(train_dataset) // config.internal_batchsize) for it in
+    # decay_lr_at = [it // (len(train_dataset) // config.internal_batch_size) for it in
     #                decay_lr_at]  # calculate epoch to decay
     print('total train epochs: ', epochs, ' training starts ......')
     str_print = 'Dataset size: {}'.format(len(train_dataset))
@@ -272,7 +281,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         optimizer.zero_grad()
 
         # Bag of Freebies, image mixup and mosaic
-        images, boxes, labels, ignored_regions = bof_augment(images, boxes, labels, ignored_regions, config)
+        images, boxes, labels, ignored_regions = traffic_augment(images, boxes, labels, ignored_regions, config)
 
         # Move to default device
         images = torch.stack(images, dim=0).to(config.device)
@@ -364,7 +373,7 @@ def evaluate(test_loader, model, optimizer, config):
                            max_overlap=config.nms['max_overlap'],
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                            config=config)
-            elif config.data_name.upper() == 'TRAFFIC':
+            elif config.data_name.upper() == 'TRAFFIC' or config.data_name.upper() == 'DETRAC':
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
                     detect(predicted_locs,
                            predicted_scores,

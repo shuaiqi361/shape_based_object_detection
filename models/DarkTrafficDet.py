@@ -57,7 +57,7 @@ class DarknetBase(nn.Module):
         self.DarkB1 = DarkBlock(64, 1)
         self.transit_1 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=2)
         self.GN_t1 = nn.GroupNorm(32, 128)
-        self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128, use_gn=True)  # (128, 128)
+        self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=(56 * 2, 96 * 2), use_gn=True)  # (128, 128)
 
         self.DarkB2 = DarkBlock(128, 3)  # (64, 64)
         self.transit_2 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=2)
@@ -619,7 +619,7 @@ class DarkTrafficDetectorLoss(nn.Module):
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
 
-    def forward(self, odm_locs, odm_scores, boxes, labels):
+    def forward(self, odm_locs, odm_scores, boxes, labels, ignored_regions):
         """
         :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
         :param odm_scores:
@@ -628,7 +628,7 @@ class DarkTrafficDetectorLoss(nn.Module):
         :return:
         """
 
-        odm_loss = self.compute_odm_loss(odm_locs, odm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(odm_locs, odm_scores, boxes, labels, ignored_regions)
 
         # TOTAL LOSS
         return odm_loss

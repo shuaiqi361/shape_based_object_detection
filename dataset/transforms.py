@@ -341,14 +341,15 @@ def resize_traffic(image, boxes, ignored_regions, resize_dim, return_percent_coo
     """
     # Resize image
     width, height = image.size
-    new_width, new_height = resize_dim
-    if width / new_width >= height / new_height:
-        resize_factor = height / new_height
-        dims = (int(width / resize_factor), new_height)
-    else:
-        resize_factor = width / new_width
-        dims = (new_width, int(height / resize_factor))
+    # new_width, new_height = resize_dim
+    # if width / new_width >= height / new_height:
+    #     resize_factor = height / new_height
+    #     dims = (int(width / resize_factor), new_height)
+    # else:
+    #     resize_factor = width / new_width
+    #     dims = (new_width, int(height / resize_factor))
 
+    dims = resize_dim
     new_image = FT.resize(image, dims)
 
     # Resize bounding boxes
@@ -569,8 +570,8 @@ def transform_traffic(image, boxes, labels, ignored_regions, split, config):
     std = config.model['std']
 
     input_sizes = config.model['input_size']  # a list of input sizes
-    test_size = config.model['test_size']
-    resize_dim = (test_size, test_size)  # only used for testing images
+    # test_size = config.model['test_size']
+    resize_dim = (540, 960)  # only used for testing images
 
     new_image = image
     new_boxes = boxes
@@ -603,7 +604,7 @@ def transform_traffic(image, boxes, labels, ignored_regions, split, config):
 
     # Resize image
     new_image, new_boxes, new_ignored_regions = resize_traffic(new_image, new_boxes, new_ignored_regions,
-                                                               resize_dim=(test_size, test_size),
+                                                               resize_dim=resize_dim,
                                                                return_percent_coords=return_percent_coords)
 
     # Convert PIL image to Torch tensor
@@ -662,7 +663,7 @@ def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
         new_labels.append(temp_labels)
     else:
         temp_image, temp_boxes, temp_ignored_regions = resize_traffic(images[0], boxes[0], ignored_regions[0],
-                                                                      resize_dims=resize_dim,
+                                                                      resize_dim=resize_dim,
                                                                       return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
@@ -697,8 +698,8 @@ def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
         new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes, temp_ignored_regions = resize(images[1], boxes[1], ignored_regions[1],
-                                                              resize_dims=resize_dim,
+        temp_image, temp_boxes, temp_ignored_regions = resize_traffic(images[1], boxes[1], ignored_regions[1],
+                                                              resize_dim=resize_dim,
                                                               return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])

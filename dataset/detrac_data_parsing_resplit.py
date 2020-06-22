@@ -46,7 +46,7 @@ def parse_annotation(annotation_path, image_folder, down_sample=False):
         ignore_regions.append([xmin, ymin, xmax, ymax])
 
     for objects in root.iter('frame'):
-        if random.random() > 0.2 and down_sample:
+        if random.random() > 0.25 and down_sample:
             continue
         boxes = list()
         labels = list()
@@ -249,7 +249,7 @@ if __name__ == '__main__':
     # root_path = '/home/keyi/research/data/DETRAC'
     # output_folder = '/home/keyi/research/code/traffic/detection_research_YorkU/dataset/DETRAC_bin'
     # root_path = '/home/keyi/research/data/DETRAC'
-    # output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC'
+    # output_folder = '/home/keyi/research/code/traffic/shape_based_object_detection/data/DETRAC_bin'
     root_path = '/home/keyi/Documents/Data/DETRAC'
     output_folder = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC_bin'
 

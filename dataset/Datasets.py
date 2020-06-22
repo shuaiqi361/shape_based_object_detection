@@ -297,7 +297,10 @@ class DetracDataset(Dataset):
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
         ids = objects['image_id']
         difficulties = torch.LongTensor(objects['difficulties'])
-        ignored_regions = objects['ignore_regions']
+        if len(objects['ignore_regions']) > 0:
+            ignored_regions = torch.FloatTensor(objects['ignore_regions'])
+        else:
+            ignored_regions = torch.FloatTensor([[0.5, 0.5, 0.5, 0.5]])
         occlusions = objects['occlusions']
 
         # Read image, and remove ignored regions
