@@ -125,6 +125,48 @@ def expand(image, boxes, filler, max_scale=4):
     return new_image, new_boxes
 
 
+def expand_traffic(image, boxes, ignored_regions=None, filler=[0.485, 0.456, 0.406], max_scale=4.):
+    """
+    Perform a zooming out operation by placing the image in a larger canvas of filler material.
+
+    Helps to learn to detect smaller objects.
+
+    :param ignored_regions:
+    :param max_scale:
+    :param image: image, a tensor of dimensions (3, original_h, original_w)
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param filler: RBG values of the filler material, a list like [R, G, B]
+    :return: expanded image, updated bounding box coordinates, ignored regions
+    """
+    # Calculate dimensions of proposed expanded (zoomed-out) image
+    original_h = image.size(1)
+    original_w = image.size(2)
+
+    scale = random.uniform(1, max_scale)
+    new_h = int(scale * original_h)
+    new_w = int(scale * original_w)
+
+    # Create such an image with the filler
+    filler = torch.FloatTensor(filler)  # (3)
+    new_image = torch.ones((3, new_h, new_w), dtype=torch.float) * filler.unsqueeze(1).unsqueeze(1)  # (3, new_h, new_w)
+    # Note - do not use expand() like new_image = filler.unsqueeze(1).unsqueeze(1).expand(3, new_h, new_w)
+    # because all expanded values will share the same memory, so changing one pixel will change all
+
+    # Place the original image at random coordinates in this new image (origin at top-left of image)
+    left = random.randint(0, new_w - original_w)
+    right = left + original_w
+    top = random.randint(0, new_h - original_h)
+    bottom = top + original_h
+    new_image[:, top:bottom, left:right] = image
+
+    # Adjust bounding boxes' coordinates accordingly
+    new_boxes = boxes + torch.FloatTensor([left, top, left, top]).unsqueeze(
+        0)  # (n_objects, 4), n_objects is the no. of objects in this image
+    new_ignored_regions = ignored_regions + torch.FloatTensor([left, top, left, top]).unsqueeze(0)
+
+    return new_image, new_boxes, new_ignored_regions
+
+
 def random_crop(image, boxes, labels):
     """
     Performs a random crop in the manner stated in the paper. Helps to learn to detect larger and partial objects.
@@ -230,6 +272,32 @@ def flip(image, boxes):
     return new_image, new_boxes
 
 
+def flip_traffic(image, boxes, ignored_regions):
+    """
+    Flip image horizontally.
+
+    :param ignored_regions:
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :return: flipped image, updated bounding box coordinates
+    """
+    # Flip image
+    new_image = FT.hflip(image)
+
+    # Flip boxes
+    new_boxes = boxes
+    new_boxes[:, 0] = image.width - boxes[:, 0] - 1
+    new_boxes[:, 2] = image.width - boxes[:, 2] - 1
+    new_boxes = new_boxes[:, [2, 1, 0, 3]]
+
+    new_ignored_regions = ignored_regions
+    new_ignored_regions[:, 0] = image.width - ignored_regions[:, 0] - 1
+    new_ignored_regions[:, 2] = image.width - ignored_regions[:, 2] - 1
+    new_ignored_regions = ignored_regions[:, [2, 1, 0, 3]]
+
+    return new_image, new_boxes, new_ignored_regions
+
+
 def resize(image, boxes, dims, return_percent_coords=True):
     """
     Resize image. For the SSD300, resize to (300, 300).
@@ -257,27 +325,29 @@ def resize(image, boxes, dims, return_percent_coords=True):
     return new_image, new_boxes
 
 
-def resize_keep(image, boxes, dim, return_percent_coords=True):
+def resize_traffic(image, boxes, ignored_regions, resize_dim, return_percent_coords=True):
     """
     Resize image while keeping the orientation, the aspect ratio will change slightly. For the SSD300, resize to (300, 300).
 
     Since percent/fractional coordinates are calculated for the bounding boxes (w.r.t image dimensions) in this process,
     you may choose to retain them.
 
+    :param resize_dim:
+    :param ignored_regions:
     :param return_percent_coords: coordinates range [0, 1] or actual coordinates
-    :param dims: image size after resizing
     :param image: image, a PIL Image
     :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
     :return: resized image, updated bounding box coordinates (or fractional coordinates, in which case they remain the same)
     """
     # Resize image
     width, height = image.size
-    if width > height:
-        resize_factor = dim / height
-        dims = (int(width * resize_factor), dim)
+    new_width, new_height = resize_dim
+    if width / new_width >= height / new_height:
+        resize_factor = height / new_height
+        dims = (int(width / resize_factor), new_height)
     else:
-        resize_factor = dim / width
-        dims = (dim, int(height * resize_factor))
+        resize_factor = width / new_width
+        dims = (new_width, int(height / resize_factor))
 
     new_image = FT.resize(image, dims)
 
@@ -285,11 +355,14 @@ def resize_keep(image, boxes, dim, return_percent_coords=True):
     old_dims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
     new_boxes = boxes / old_dims  # percent coordinates
 
+    new_ignored_regions = ignored_regions / old_dims
+
     if not return_percent_coords:
         new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
         new_boxes = new_boxes * new_dims
+        new_ignored_regions = new_ignored_regions * new_dims
 
-    return new_image, new_boxes
+    return new_image, new_boxes, new_ignored_regions
 
 
 def photometric_distort(image):
@@ -469,25 +542,98 @@ def transform_richer(image, boxes, labels, split, config):
     return new_image, new_boxes, new_labels
 
 
-def bof_augment(images, boxes, labels, config):
+def transform_traffic(image, boxes, labels, ignored_regions, split, config):
+    """
+    Apply the transformations above.
+
+    :param config:
+    :param operation_list:
+    :param resize_dim:
+    :param resize: resize training images
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param labels: labels of objects, a tensor of dimensions (n_objects)
+    :param difficulties: difficulties of detection of these objects, a tensor of dimensions (n_objects)
+    :param split: one of 'TRAIN' or 'TEST', since different sets of transformations are applied
+    :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
+    """
+    assert split in {'TRAIN', 'TEST', 'VAL'}
     operation_list = config.model['operation_list']
-    assert len(labels) == 4  # hard code 4 images per batch, return 2 images,
+    return_percent_coords = config.model['return_percent_coords']
+
+    # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
+    # see: https://pytorch.org/docs/stable/torchvision/models.html
+    # mean = [0.485, 0.456, 0.406]
+    # std = [0.229, 0.224, 0.225]
+    mean = config.model['mean']
+    std = config.model['std']
+
+    input_sizes = config.model['input_size']  # a list of input sizes
+    test_size = config.model['test_size']
+    resize_dim = (test_size, test_size)  # only used for testing images
+
+    new_image = image
+    new_boxes = boxes
+    new_labels = labels
+    new_ignored_regions = ignored_regions
+
+    # Skip the following operations for evaluation/testing
+    if split == 'TRAIN':
+        # A series of photometric distortions in random order, each with 50% chance of occurrence
+        new_image = photometric_distort(new_image)
+
+        if 'expand' in operation_list:
+            # Convert PIL image to Torch tensor
+            new_image = FT.to_tensor(new_image)
+
+            # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
+            # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+            if random.random() < 0.25 and 'expand' in operation_list:
+                new_image, new_boxes, new_ignored_regions = expand_traffic(new_image, new_boxes, new_ignored_regions,
+                                                                           filler=mean, max_scale=2.5)
+
+            # Convert Torch tensor to PIL image
+            new_image = FT.to_pil_image(new_image)
+
+        # Flip image with a 50% chance
+        if random.random() < 0.5:
+            new_image, new_boxes, new_ignored_regions = flip_traffic(new_image, new_boxes, new_ignored_regions)
+
+        return new_image, new_boxes, new_labels, new_ignored_regions
+
+    # Resize image
+    new_image, new_boxes, new_ignored_regions = resize_traffic(new_image, new_boxes, new_ignored_regions,
+                                                               resize_dim=(test_size, test_size),
+                                                               return_percent_coords=return_percent_coords)
+
+    # Convert PIL image to Torch tensor
+    new_image = FT.to_tensor(new_image)
+
+    # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
+    new_image = FT.normalize(new_image, mean=mean, std=std)
+
+    return new_image, new_boxes, new_labels, new_ignored_regions
+
+
+def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
+    operation_list = config.model['operation_list']
+    # assert len(labels) == 4  # hard code 4 images per batch, return 2 images,
     # the box is a list of 4 tensors, each tensor contains a 2-d vetor with many bboxes
     new_images = list()
     new_labels = list()
     new_boxes = list()
+    new_ignored_regions = list()
     resize_dims = config.model['input_size']
     if 'random_shape' in operation_list:
-        s = resize_dims[np.random.randint(0, len(resize_dims) - 1)]
+        s = resize_dims[np.random.randint(0, len(resize_dims))]
         resize_dim = (s, s)
     else:
         if isinstance(resize_dims, list):
-            resize_dim = resize_dims[0]
+            resize_dim = (resize_dims[0], resize_dims[0])
         else:
             resize_dim = (540, 960)
-    # print('boxes from loader', boxes)
 
-    if 'mixup' in operation_list and random.random() < 0.5:
+    if 'mixup' in operation_list and random.random() < 0.25:
         temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
         temp_image = FT.to_pil_image(temp_image)
 
@@ -495,7 +641,117 @@ def bof_augment(images, boxes, labels, config):
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = torch.where(temp_image == 0,
-                                 (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(temp_image),
+                                 (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(
+                                     temp_image),
+                                 temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+
+        # fill the background with no mixup with mean pixels
+        # temp_image = torch.where(temp_image == 0,
+        #                          (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(temp_image),
+        #                          temp_image)
+        # temp_image = torch.where(temp_image[0, :, :] == 0 & temp_image[1, :, :] == 0 & temp_image[2, :, :] == 0,
+        #                          (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(
+        #                              temp_image),
+        #                          temp_image)
+        # temp_image[temp_image[:, :, :] == torch.FloatTensor([0, 0, 0])] = torch.FloatTensor(config.model['mean'])
+        # temp_image = FT.to_pil_image(temp_image)
+
+        new_images.append(temp_image)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
+        new_labels.append(temp_labels)
+    else:
+        temp_image, temp_boxes, temp_ignored_regions = resize_traffic(images[0], boxes[0], ignored_regions[0],
+                                                                      resize_dims=resize_dim,
+                                                                      return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_labels.append(labels[0])
+        new_boxes.append(temp_boxes.clamp_(0, 1))
+        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 1))
+
+    # # draw augmented images and bboxes
+    # temp_boxes = temp_boxes.clamp_(0, 1)
+    # draw = ImageDraw.Draw(temp_image)
+    # n_boxes = temp_boxes.size(0)
+    # rect_coord = []
+    # for i in range(n_boxes):
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
+    #     # rect_coord.append(coord)
+    #     draw.rectangle(coord)
+    # temp_image.show()
+    #
+    # exit()
+
+    if 'mosaic' in operation_list and random.random() < 0.25:
+        assert len(labels) == 4
+        temp_image, temp_boxes, temp_labels = mosaic_image(images, boxes, labels)
+        # temp_boxes = torch.cat(temp_boxes, dim=0)
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=resize_dim,
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_boxes.append(temp_boxes.clamp_(0, 1))
+        new_labels.append(temp_labels)
+    else:
+        temp_image, temp_boxes, temp_ignored_regions = resize(images[1], boxes[1], ignored_regions[1],
+                                                              resize_dims=resize_dim,
+                                                              return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
+        new_images.append(temp_image)
+        new_labels.append(labels[1])
+        new_boxes.append(temp_boxes.clamp_(0, 1))
+        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 1))
+
+    # draw augmented images and bboxes
+    # temp_boxes = temp_boxes.clamp_(0, 1)
+    # draw = ImageDraw.Draw(temp_image)
+    # n_boxes = temp_boxes.size(0)
+    # rect_coord = []
+    # for i in range(n_boxes):
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
+    #     # rect_coord.append(coord)
+    #     draw.rectangle(coord)
+    # temp_image.show()
+    #
+    # exit()
+
+    return new_images, new_boxes, new_labels, new_ignored_regions
+
+
+def bof_augment(images, boxes, labels, ignored_regions=None, config=None):
+    operation_list = config.model['operation_list']
+    # assert len(labels) == 4  # hard code 4 images per batch, return 2 images,
+    # the box is a list of 4 tensors, each tensor contains a 2-d vetor with many bboxes
+    new_images = list()
+    new_labels = list()
+    new_boxes = list()
+    resize_dims = config.model['input_size']
+    if 'random_shape' in operation_list:
+        s = resize_dims[np.random.randint(0, len(resize_dims))]
+        resize_dim = (s, s)
+    else:
+        if isinstance(resize_dims, list):
+            resize_dim = (resize_dims[0], resize_dims[0])
+        else:
+            resize_dim = (540, 960)
+
+    if 'mixup' in operation_list and random.random() < 0.5:
+        assert len(labels) == 4
+        temp_image, temp_boxes, temp_labels = mixup_image(images[:2], boxes[:2], labels[:2])
+        temp_image = FT.to_pil_image(temp_image)
+
+        temp_image, temp_boxes = resize(temp_image, temp_boxes, dims=resize_dim,
+                                        return_percent_coords=config.model['return_percent_coords'])
+        temp_image = FT.to_tensor(temp_image)
+        temp_image = torch.where(temp_image == 0,
+                                 (torch.FloatTensor(config.model['mean']).unsqueeze(1).unsqueeze(1)).expand_as(
+                                     temp_image),
                                  temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
 

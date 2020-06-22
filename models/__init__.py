@@ -9,6 +9,8 @@ from .RefineBOF2 import RefineDetBof2, RefineDetBofLoss2
 from .RefineBOFTraffic import RefineDetBofTraffic, RefineDetBofTrafficLoss
 from .DarkRefineDet import RefineDetDark, RefineDetDarkLoss
 from .DarkRefineScratchDet import RefineDetScratchDark, RefineDetScratchDarkLoss
+from .DarkScratchDet import DarkScratchDetector, DarkScratchDetectorLoss
+from .DarkTrafficDet import DarkTrafficDetector, DarkTrafficDetectorLoss
 
 
 def model_entry(config):
@@ -51,6 +53,12 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'REFINEDETSCRATCHDARK':
         print('Loading RefineDet with customized DarkNet53 with Group Norm ......')
         return RefineDetScratchDark(config['n_classes'], config=config), RefineDetScratchDarkLoss
+    elif config.model['arch'].upper() == 'DARKTRAFFICDET':
+        print('Loading RefineDet without ARMs, with customized DarkNet53 with Group Norm for traffic ......')
+        return DarkTrafficDetector(config['n_classes'], config=config), DarkTrafficDetectorLoss
+    elif config.model['arch'].upper() == 'DARKSCRATCHDET':
+        print('Loading RefineDet without ARMs, with customized DarkNet53 with Group Norm......')
+        return DarkScratchDetector(config['n_classes'], config=config), DarkScratchDetectorLoss
     else:
         print('Try other models.')
         raise NotImplementedError

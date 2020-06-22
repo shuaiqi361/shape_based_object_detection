@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import json
 import os
 from PIL import Image
-from .transforms import transform, transform_richer
+from .transforms import transform, transform_richer, transform_traffic
 import cv2
 
 
@@ -297,11 +297,14 @@ class DetracDataset(Dataset):
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
         ids = objects['image_id']
         difficulties = torch.LongTensor(objects['difficulties'])
-        ignore_regions = objects['ignore_regions']
+        ignored_regions = objects['ignore_regions']
         occlusions = objects['occlusions']
 
         # Read image, and remove ignored regions
-        img = cv2.imread(self.images[i])
+        image = Image.open(self.images[i], mode='r')
+        image = image.convert('RGB')
+
+        # img = cv2.imread(self.images[i])
 
         # temporarily using ignored regions for training
         # for region in ignore_regions:
@@ -310,18 +313,18 @@ class DetracDataset(Dataset):
         # cv2.imshow('inputs', img)
         # cv2.waitKey()
         # exit()
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(img)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # image = Image.fromarray(img)
 
         # Apply transformations
         # image, boxes, labels = transform(image, boxes, labels,
         #                                  split=self.split, resize_dim=(540, 960),
         #                                  config=self.config)
-        image, boxes, labels = transform_richer(image, boxes, labels,
-                                         split=self.split,
-                                         config=self.config)
+        image, boxes, labels, ignored_regions = transform_traffic(image, boxes, labels, ignored_regions,
+                                                                  split=self.split,
+                                                                  config=self.config)
 
-        return image, boxes, labels, ids, difficulties
+        return image, boxes, labels, ignored_regions, ids, difficulties
 
     def __len__(self):
         return len(self.images)
@@ -342,6 +345,7 @@ class DetracDataset(Dataset):
         images = list()
         boxes = list()
         labels = list()
+        ignored_regions = list()
         ids = list()
         difficulties = list()
 
@@ -349,12 +353,13 @@ class DetracDataset(Dataset):
             images.append(b[0])
             boxes.append(b[1])
             labels.append(b[2])
-            ids.append(b[3])
-            difficulties.append(b[4])
+            ignored_regions.append(b[3])
+            ids.append(b[4])
+            difficulties.append(b[5])
 
         # images = torch.stack(images, dim=0)
 
-        return images, boxes, labels, ids, difficulties
+        return images, boxes, labels, ignored_regions, ids, difficulties
 
 
 class BaseModelVOCOCODataset(Dataset):

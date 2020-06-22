@@ -11,8 +11,7 @@ from .modules import Mish, AdaptivePooling, Residual, ConvBNAct, DualAdaptivePoo
 class DarkBlock(nn.Module):
     def __init__(self, in_planes, n_blocks):
         super(DarkBlock, self).__init__()
-        self.in_planes = in_planes  # 64
-        # self.out_planes = out_planes  # 128
+        self.in_planes = in_planes
         self.n_blocks = n_blocks
         self.Block = self.__make_block__(self.n_blocks)
 
@@ -20,7 +19,6 @@ class DarkBlock(nn.Module):
         block = []
         for i in range(n_blocks):
             layer = self.__make_layers__(ConvGNAct, Residual)
-            # layer = self.__make_layers__(ConvBNAct, Residual)
             block += layer
 
         return nn.Sequential(*block)
@@ -55,7 +53,7 @@ class DarknetBase(nn.Module):
         self.conv1_3 = nn.Conv2d(64, 64, kernel_size=3, padding=1, stride=2)  # (256, 256)
         self.GN3 = nn.GroupNorm(16, 64)
 
-        self.DarkB1 = DarkBlock(64, 1)
+        self.DarkB1 = DarkBlock(64, 2)
         self.transit_1 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=2)
         self.GN_t1 = nn.GroupNorm(32, 128)
         self.adap_pool = DualAdaptivePooling(128, 128, adaptive_size=128, use_gn=True)  # (128, 128)
@@ -267,122 +265,6 @@ class TCBTail(nn.Module):
         return out
 
 
-class ARMConvolutions(nn.Module):
-    """
-    Anchor Refinement Module:
-    Convolutions to predict class scores and bounding boxes using lower and higher-level feature maps.
-    """
-
-    def __init__(self):
-        """
-        :param n_classes: number of different types of objects
-        """
-        super(ARMConvolutions, self).__init__()
-
-        self.n_classes = 2  # foreground and background
-        self.feat_channels = {'DB3': 256,
-                              'DB4': 512,
-                              'DB5': 256,
-                              'DB6': 192}
-
-        # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'DB3': 3,
-                   'DB4': 3,
-                   'DB5': 3,
-                   'DB6': 3}
-
-        # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
-        self.loc_conv4_3 = nn.Conv2d(self.feat_channels['DB3'], n_boxes['DB3'] * 4,
-                                     kernel_size=3, padding=1)
-        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB4'], n_boxes['DB4'] * 4, kernel_size=3, padding=1)
-        self.loc_conv8_2 = nn.Conv2d(self.feat_channels['DB5'], n_boxes['DB5'] * 4,
-                                     kernel_size=3, padding=1)
-        self.loc_conv9_2 = nn.Conv2d(self.feat_channels['DB6'], n_boxes['DB6'] * 4, kernel_size=3, padding=1)
-
-        # Class prediction convolutions (predict classes in localization boxes)
-        self.cl_conv4_3 = nn.Conv2d(self.feat_channels['DB3'], n_boxes['DB3'] * self.n_classes,
-                                    kernel_size=3, padding=1)
-        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB4'], n_boxes['DB4'] * self.n_classes,
-                                  kernel_size=3, padding=1)
-        self.cl_conv8_2 = nn.Conv2d(self.feat_channels['DB5'], n_boxes['DB5'] * self.n_classes,
-                                    kernel_size=3, padding=1)
-        self.cl_conv9_2 = nn.Conv2d(self.feat_channels['DB6'], n_boxes['DB6'] * self.n_classes,
-                                    kernel_size=3, padding=1)
-
-        # Initialize convolutions' parameters
-        self.init_conv2d()
-
-    def init_conv2d(self):
-        """
-        Initialize convolution parameters.
-        """
-        for c in self.children():
-            if isinstance(c, nn.Conv2d):
-                # n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
-                # c.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.xavier_normal_(c.weight.data)
-                nn.init.kaiming_normal_(c.weight.data)
-                if c.bias is not None:
-                    nn.init.constant_(c.bias, 0)
-
-    def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats):
-        """
-        Forward propagation. To ge initial offsets w.r.t. anchors anc binary labels
-
-        :param conv4_3_feats: conv4_3 feature map, a tensor of dimensions (N, 512, 64, 64)
-        :param conv7_feats: conv7 feature map, a tensor of dimensions (N, 1024, 32, 32)
-        :param conv8_2_feats: conv8_2 feature map, a tensor of dimensions (N, 512, 16, 16)
-        :param conv9_2_feats: conv8_2 feature map, a tensor of dimensions (N, 512, 8, 8)
-        :return: 16320 locations and class scores (i.e. w.r.t each prior box) for each image
-        """
-        batch_size = conv4_3_feats.size(0)
-
-        # # Predict localization boxes' bounds (as offsets w.r.t prior-boxes)
-        l_conv4_3 = self.loc_conv4_3(conv4_3_feats)  # (N, 16, 64, 64)
-        l_conv4_3 = l_conv4_3.permute(0, 2, 3,
-                                      1).contiguous()  # (N, 64, 64, 16), to match prior-box order (after .view())
-        # (.contiguous() ensures it is stored in a contiguous chunk of memory, needed for .view() below)
-        l_conv4_3 = l_conv4_3.view(batch_size, -1, 4)  # (N, 16384, 4), there are a total 16384 boxes
-
-        l_conv7 = self.loc_conv7(conv7_feats)  # (N, 24, 16, 16)
-        l_conv7 = l_conv7.permute(0, 2, 3, 1).contiguous()  # (N, 16, 16, 24)
-        l_conv7 = l_conv7.view(batch_size, -1, 4)  # (N, 1536, 4), there are a total 1536 boxes on this feature map
-
-        l_conv8_2 = self.loc_conv8_2(conv8_2_feats)  # (N, 24, 8, 8)
-        l_conv8_2 = l_conv8_2.permute(0, 2, 3, 1).contiguous()  # (N, 8, 8, 24)
-        l_conv8_2 = l_conv8_2.view(batch_size, -1, 4)  # (N, 384, 4)
-
-        l_conv9_2 = self.loc_conv9_2(conv9_2_feats)  # (N, 24, 4, 4)
-        l_conv9_2 = l_conv9_2.permute(0, 2, 3, 1).contiguous()  # (N, 4, 4, 24)
-        l_conv9_2 = l_conv9_2.view(batch_size, -1, 4)  # (N, 96, 4)
-
-        # # Predict classes in localization boxes
-        c_conv4_3 = self.cl_conv4_3(conv4_3_feats)
-        c_conv4_3 = c_conv4_3.permute(0, 2, 3,
-                                      1).contiguous()
-        c_conv4_3 = c_conv4_3.view(batch_size, -1,
-                                   self.n_classes)
-
-        c_conv7 = self.cl_conv7(conv7_feats)
-        c_conv7 = c_conv7.permute(0, 2, 3, 1).contiguous()
-        c_conv7 = c_conv7.view(batch_size, -1,
-                               self.n_classes)
-
-        c_conv8_2 = self.cl_conv8_2(conv8_2_feats)
-        c_conv8_2 = c_conv8_2.permute(0, 2, 3, 1).contiguous()
-        c_conv8_2 = c_conv8_2.view(batch_size, -1, self.n_classes)
-
-        c_conv9_2 = self.cl_conv9_2(conv9_2_feats)
-        c_conv9_2 = c_conv9_2.permute(0, 2, 3, 1).contiguous()
-        c_conv9_2 = c_conv9_2.view(batch_size, -1, self.n_classes)
-
-        # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2], dim=1).contiguous()
-        classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2], dim=1).contiguous()
-
-        return locs, classes_scores
-
-
 class ODMConvolutions(nn.Module):
     """
     Object Detection Module.
@@ -399,9 +281,9 @@ class ODMConvolutions(nn.Module):
 
         # Number of prior-boxes we are considering per position in each feature map
         n_boxes = {'DB3': 3,
-                   'DB4': 3,
-                   'DB5': 3,
-                   'DB6': 3}
+                   'DB4': 5,
+                   'DB5': 5,
+                   'DB6': 5}
 
         self.feat_channels = {'DB3': 256,
                               'DB4': 512,
@@ -431,8 +313,8 @@ class ODMConvolutions(nn.Module):
             if isinstance(c, nn.Conv2d):
                 # n = c.kernel_size[0] * c.kernel_size[1] * c.out_channels
                 # c.weight.data.normal_(0, sqrt(2. / n))
-                # nn.init.xavier_normal_(c.weight.data)
-                nn.init.kaiming_normal_(c.weight.data)
+                nn.init.xavier_normal_(c.weight.data)
+                # nn.init.kaiming_normal_(c.weight.data)
                 if c.bias is not None:
                     nn.init.constant_(c.bias.data, 0)
 
@@ -496,19 +378,19 @@ class ODMConvolutions(nn.Module):
         return locs, classes_scores
 
 
-class RefineDetScratchDark(nn.Module):
+class DarkScratchDetector(nn.Module):
     """
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
     def __init__(self, n_classes, config):
-        super(RefineDetScratchDark, self).__init__()
+        super(DarkScratchDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
         self.base = DarknetBase()
         self.theta = 0.01
 
-        self.arm_convs = ARMConvolutions()
+        # self.arm_convs = ARMConvolutions()
         self.odm_convs = ODMConvolutions(self.n_classes)
         self.tcb_convs = TCBConvolutions()
 
@@ -525,7 +407,6 @@ class RefineDetScratchDark(nn.Module):
         # Run VGG base network convolutions (lower level feature map generators)
         conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats = self.base(image)
 
-        arm_locs, arm_scores = self.arm_convs(conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats)
         tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2 = \
             self.tcb_convs(conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats)
 
@@ -533,11 +414,11 @@ class RefineDetScratchDark(nn.Module):
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
         # print(arm_locs.size(), arm_scores.size(), odm_locs.size(), odm_scores.size())
-        raw_locs = self.offset2bbox(arm_locs.data.detach(), odm_locs.data.detach())
+        # raw_locs = self.offset2bbox(arm_locs.data.detach(), odm_locs.data.detach())
         # clean_locs, clean_scores = self.remove_background(arm_scores, odm_scores, raw_locs)
-        prior_positive_idx = (arm_scores[:, :, 1] > self.theta)  # (batchsize, n_priors)
+        # prior_positive_idx = (arm_scores[:, :, 1] > self.theta)  # (batchsize, n_priors)
 
-        return arm_locs, arm_scores, odm_locs, odm_scores, raw_locs, odm_scores, prior_positive_idx
+        return odm_locs, odm_scores
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -569,9 +450,9 @@ class RefineDetScratchDark(nn.Module):
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'DB3': [1., 2., 0.5],
-                         'DB4': [1., 2., 0.5],
-                         'DB5': [1., 2., 0.5],
-                         'DB6': [1., 2., 0.5]}
+                         'DB4': [1., 2., 0.5, 3., 0.333],
+                         'DB5': [1., 2., 0.5, 3., 0.333],
+                         'DB6': [1., 2., 0.5, 3., 0.333]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -594,7 +475,7 @@ class RefineDetScratchDark(nn.Module):
         return prior_boxes
 
 
-class RefineDetScratchDarkLoss(nn.Module):
+class DarkScratchDetectorLoss(nn.Module):
     """
     The RetinaFocalLoss, a loss function for object detection from RetinaNet.
     This is a combination of:
@@ -603,7 +484,7 @@ class RefineDetScratchDarkLoss(nn.Module):
     """
 
     def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.01):
-        super(RefineDetScratchDarkLoss, self).__init__()
+        super(DarkScratchDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
@@ -617,115 +498,14 @@ class RefineDetScratchDarkLoss(nn.Module):
         # self.arm_loss = SmoothL1Loss(reduction='mean')
         # self.odm_loss = SmoothL1Loss(reduction='mean')
         # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.arm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        # self.arm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        # self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.1, reduce=False)
+        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=0.05, reduce=False)
         # self.Focal_loss = focal_loss
 
-    def compute_arm_loss(self, arm_locs, arm_scores, boxes, labels):
-        """
-        :param arm_locs: offset prediction from Anchor Refinement Modules
-        :param arm_scores: binary classification scores from Anchor Refinement Modules
-        :param boxes: gt bbox
-        :param labels: gt labels
-        :return:
-        """
-        batch_size = arm_locs.size(0)
-        n_priors = self.priors_cxcy.size(0)
-        n_classes = arm_scores.size(2)  # should be 2
-
-        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
-
-        # For each image
-        for i in range(batch_size):
-            n_objects = boxes[i].size(0)
-
-            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
-
-            # For each prior, find the object that has the maximum overlap, return [value, indices]
-            overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)
-
-            # We don't want a situation where an object is not represented in our positive (non-background) priors -
-            # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.
-            # 2. All priors with the object may be assigned as background based on the threshold (0.5).
-
-            # To remedy this -
-            # First, find the prior that has the maximum overlap for each object.
-            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
-            # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            # object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(self.device)
-            if len(prior_for_each_object) > 0:
-                overlap_for_each_prior.index_fill_(0, prior_for_each_object, 1.0)
-
-            for j in range(prior_for_each_object.size(0)):
-                object_for_each_prior[prior_for_each_object[j]] = j
-
-            # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
-            # overlap_for_each_prior[prior_for_each_object] = 1.
-
-            # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]
-
-            # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.2] = 0
-
-            # Store converted labels 0, 1
-            # label_for_each_prior[label_for_each_prior > 0] = 1
-            label_for_each_prior = (label_for_each_prior > 0).long()
-            true_classes[i] = label_for_each_prior
-
-            # Encode center-size object coordinates into the form we regressed predicted boxes to
-            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
-            true_locs[i] = boxes[i][object_for_each_prior]
-            decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy))
-
-        # Identify priors that are positive (non-background, binary)
-        positive_priors = true_classes > 0
-        n_positives = positive_priors.sum(dim=1)  # (N)
-        # LOCALIZATION LOSS
-        # smooth l1
-        # loc_loss = self.arm_loss(arm_locs[positive_priors].view(-1, 4),
-        #                          true_locs_encoded[positive_priors].view(-1, 4))
-
-        # IOU loss
-        loc_loss = self.arm_loss(decoded_locs[positive_priors].view(-1, 4),
-                                 true_locs[positive_priors].view(-1, 4))
-
-        # CONFIDENCE LOSS
-        # Number of positive and hard-negative priors per image
-        # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())
-        n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
-
-        # First, find the loss for all priors
-        conf_loss_all = self.arm_cross_entropy(arm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
-
-        # We already know which priors are positive
-        conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
-
-        # Next, find which priors are hard-negative
-        # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-        conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-        conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
-                                              descending=True)  # (N, 8732), sorted by decreasing hardness
-        hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-            self.device)  # (N, 8732)
-        hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
-        conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
-
-        conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
-
-        # TOTAL LOSS
-        return conf_loss + self.alpha * loc_loss
-
-    def compute_odm_loss(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
+    def compute_odm_loss(self, odm_locs, odm_scores, boxes, labels):
         """
         :param arm_locs: serve as "anchor boxes"
         :param arm_scores:
@@ -744,7 +524,6 @@ class RefineDetScratchDarkLoss(nn.Module):
         assert n_priors == odm_locs.size(1) == odm_scores.size(1)
 
         # Calculate ARM loss: offset smoothl1 + binary classification loss
-        decoded_arm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
@@ -754,10 +533,7 @@ class RefineDetScratchDarkLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            decoded_arm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(arm_locs[i], self.priors_cxcy))
-            overlap = find_jaccard_overlap(boxes[i], decoded_arm_locs[i])
-
-            # overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
+            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
             overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (22536)
@@ -782,8 +558,8 @@ class RefineDetScratchDarkLoss(nn.Module):
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
-            # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
+            # label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
 
             # Store
             true_classes[i] = label_for_each_prior
@@ -794,17 +570,10 @@ class RefineDetScratchDarkLoss(nn.Module):
             # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
             true_locs[i] = boxes[i][object_for_each_prior]
             # print(odm_locs.size(), decoded_arm_locs.size())
-            decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], xy_to_cxcy(decoded_arm_locs[i])))
+            decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
-        # Eliminate easy background bboxes from ARM
-        arm_scores_prob = F.softmax(arm_scores, dim=2)
-        easy_negative_idx = arm_scores_prob[:, :, 1] < self.theta
-        # print(positive_priors.size(), easy_negative_idx.size())
-        # exit()
-        # positive_priors[easy_negative_idx] = 0
-        positive_priors = positive_priors & ~easy_negative_idx
 
         # LOCALIZATION LOSS
         loc_loss = self.odm_loss(decoded_odm_locs[positive_priors].view(-1, 4),
@@ -814,7 +583,6 @@ class RefineDetScratchDarkLoss(nn.Module):
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
-        # print('Classes:', self.n_classes, predicted_scores.size(), true_classes.size())
         n_positives = positive_priors.sum(dim=1)  # (N)
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
@@ -830,10 +598,6 @@ class RefineDetScratchDarkLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
         conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-        conf_loss_neg[easy_negative_idx] = 0.
-        # print(conf_loss_neg.size(), conf_loss_neg[positive_priors, :].size(), conf_loss_neg[easy_negative_idx, :].size())
-        # print(positive_priors.size(), easy_negative_idx.size())
-        # exit()
 
         conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
@@ -847,7 +611,7 @@ class RefineDetScratchDarkLoss(nn.Module):
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
 
-    def forward(self, arm_locs, arm_scores, odm_locs, odm_scores, boxes, labels):
+    def forward(self, odm_locs, odm_scores, boxes, labels):
         """
         :param arm_locs: offset prediction and binary classification scores from Anchor Refinement Modules
         :param arm_scores:10
@@ -857,9 +621,8 @@ class RefineDetScratchDarkLoss(nn.Module):
         :param labels:
         :return:
         """
-        arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
-        odm_loss = self.compute_odm_loss(arm_locs.data.detach(), arm_scores.data.detach(), odm_locs, odm_scores, boxes,
-                                         labels)
+        # arm_loss = self.compute_arm_loss(arm_locs, arm_scores, boxes, labels)
+        odm_loss = self.compute_odm_loss(odm_locs, odm_scores, boxes, labels)
 
         # TOTAL LOSS
-        return arm_loss + odm_loss
+        return odm_loss
