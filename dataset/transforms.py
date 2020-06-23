@@ -669,8 +669,8 @@ def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
         new_labels.append(labels[0])
-        new_boxes.append(temp_boxes.clamp_(0, 1))
-        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 1))
+        new_boxes.append(temp_boxes.clamp_(0, 0.999))
+        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 0.999))
 
     # # draw augmented images and bboxes
     # temp_boxes = temp_ignored_regions.clamp_(0, 1)
@@ -705,8 +705,8 @@ def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
         new_labels.append(labels[1])
-        new_boxes.append(temp_boxes.clamp_(0, 1))
-        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 1))
+        new_boxes.append(temp_boxes.clamp_(0, 0.999))
+        new_ignored_regions.append(temp_ignored_regions.clamp_(0, 0.999))
 
     # draw augmented images and bboxes
     # temp_boxes = temp_boxes.clamp_(0, 1)

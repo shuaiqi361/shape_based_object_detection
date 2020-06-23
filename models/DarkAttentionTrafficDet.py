@@ -509,7 +509,7 @@ class DarkTrafficAttentionDetector(nn.Module):
         # print(conv3_feats.size(), attention_map.size())
         # exit()
 
-        conv3_feats = conv3_feats * attention_map.data
+        conv3_feats = conv3_feats * attention_map
         aux4_feats, aux5_feats, aux6_feats = self.aux_convs(conv3_feats)
 
         tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2 = \
@@ -518,7 +518,7 @@ class DarkTrafficAttentionDetector(nn.Module):
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
         odm_locs, odm_scores = self.odm_convs(tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2)
 
-        return odm_locs, odm_scores, attention_map
+        return odm_locs, odm_scores, seg_out
 
     def offset2bbox(self, arm_locs, odm_locs):
         batch_size = arm_locs.size(0)
@@ -615,7 +615,7 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.seg_loss = nn.BCELoss(reduction='mean')
+        self.seg_loss = nn.BCELoss()
 
     def compute_odm_loss(self, odm_locs, odm_scores, boxes, labels, ignored_regions):
         """
@@ -760,4 +760,4 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
         odm_loss = self.compute_odm_loss(odm_locs, odm_scores, boxes, labels, ignored_regions)
 
         # TOTAL LOSS
-        return odm_loss + seg_loss * 5.
+        return odm_loss + seg_loss
