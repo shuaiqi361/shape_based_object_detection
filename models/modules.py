@@ -103,7 +103,7 @@ class Upsample(nn.Module):
         self.Conv1 = ConvGNAct(self.in_planes, self.in_planes, kernel_size=3, padding=1)
         self.Conv2 = ConvGNAct(self.in_planes, self.out_planes, kernel_size=1, padding=0)
         self.up_conv = nn.ConvTranspose2d(self.out_planes, self.out_planes, kernel_size=3,
-                                          stride=self.up_factor, padding=1)
+                                          stride=self.up_factor, padding=1, output_padding=1)
         self.GN = nn.GroupNorm(num_groups=32, num_channels=self.out_planes)
         self.mish = Mish()
 

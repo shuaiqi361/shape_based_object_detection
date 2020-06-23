@@ -62,7 +62,7 @@ def model_entry(config):
         return DarkScratchDetector(config['n_classes'], config=config), DarkScratchDetectorLoss
     elif config.model['arch'].upper() == 'DARKTRAFFICATTENTION':
         print('Loading RefineDet without attention ......')
-        return DarkAttentionTrafficDet(config['n_classes'], config=config), DarkTrafficAttentionDetectorLoss
+        return DarkTrafficAttentionDetector(config['n_classes'], config=config), DarkTrafficAttentionDetectorLoss
     else:
         print('Try other models.')
         raise NotImplementedError

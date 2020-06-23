@@ -505,8 +505,11 @@ class DarkTrafficAttentionDetector(nn.Module):
         # Run VGG base network convolutions (lower level feature map generators)
         conv2_feats, conv3_feats, conv4_feats = self.base(image)
         seg_out = self.seg_convs(conv2_feats, conv3_feats, conv4_feats)
-        attention_map = F.interpolate(seg_out, scale_factor=2)  # (N, 1, 56, 96)
-        conv3_feats = conv3_feats * attention_map
+        attention_map = F.interpolate(seg_out, size=(56, 96))  # (N, 1, 56, 96)
+        # print(conv3_feats.size(), attention_map.size())
+        # exit()
+
+        conv3_feats = conv3_feats * attention_map.data
         aux4_feats, aux5_feats, aux6_feats = self.aux_convs(conv3_feats)
 
         tcb_conv4_3, tcb_conv7, tcb_conv8_2, tcb_conv9_2 = \
@@ -612,7 +615,7 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
         self.odm_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.arm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.seg_loss = nn.BCELoss(reduction='sum')
+        self.seg_loss = nn.BCELoss(reduction='mean')
 
     def compute_odm_loss(self, odm_locs, odm_scores, boxes, labels, ignored_regions):
         """
@@ -730,12 +733,15 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
         gt_map = torch.zeros(attention_map.size()).to(self.device)
         batch_size = attention_map.size(0)
         dims = torch.FloatTensor([self.fmap_dims['DB3'][1], self.fmap_dims['DB3'][0],
-                                  self.fmap_dims['DB3'][1], self.fmap_dims['DB3'][0]]).unsqueeze(0)
+                                  self.fmap_dims['DB3'][1], self.fmap_dims['DB3'][0]]).unsqueeze(0).to(self.device)
 
         for i in range(batch_size):
             bboxes = torch.floor(boxes[i] * dims).int()
+            # print(bboxes.size())
+            # print(bboxes)
+            # exit()
             for n in range(bboxes.size(0)):
-                gt_map[i, :, bboxes[1]:bboxes[3], bboxes[0]:bboxes[2]]
+                gt_map[i, :, bboxes[n, 1]:bboxes[n, 3], bboxes[n, 0]:bboxes[n, 2]] = 1.
 
         loss = self.seg_loss(attention_map, gt_map)
 
@@ -754,4 +760,4 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
         odm_loss = self.compute_odm_loss(odm_locs, odm_scores, boxes, labels, ignored_regions)
 
         # TOTAL LOSS
-        return odm_loss + seg_loss
+        return odm_loss + seg_loss * 5.

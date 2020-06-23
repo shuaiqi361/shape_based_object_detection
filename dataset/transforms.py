@@ -673,7 +673,7 @@ def traffic_augment(images, boxes, labels, ignored_regions=None, config=None):
         new_ignored_regions.append(temp_ignored_regions.clamp_(0, 1))
 
     # # draw augmented images and bboxes
-    # temp_boxes = temp_boxes.clamp_(0, 1)
+    # temp_boxes = temp_ignored_regions.clamp_(0, 1)
     # draw = ImageDraw.Draw(temp_image)
     # n_boxes = temp_boxes.size(0)
     # rect_coord = []
