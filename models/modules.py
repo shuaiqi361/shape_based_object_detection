@@ -94,6 +94,44 @@ class Residual(nn.Module):
         return x + res
 
 
+class Upsample(nn.Module):
+    def __init__(self, in_planes, out_planes, up_factor=2):
+        super(Upsample, self).__init__()
+        self.in_planes = in_planes
+        self.out_planes = out_planes
+        self.up_factor = up_factor
+        self.Conv1 = ConvGNAct(self.in_planes, self.in_planes, kernel_size=3, padding=1)
+        self.Conv2 = ConvGNAct(self.in_planes, self.out_planes, kernel_size=1, padding=0)
+        self.up_conv = nn.ConvTranspose2d(self.out_planes, self.out_planes, kernel_size=3,
+                                          stride=self.up_factor, padding=1)
+        self.GN = nn.GroupNorm(num_groups=32, num_channels=self.out_planes)
+        self.mish = Mish()
+
+        # parameters initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                # m.weight.data.normal_(0, sqrt(2. / n))
+                nn.init.xavier_normal_(m.weight.data)
+                # nn.init.kaiming_normal_(m.weight.data)
+            elif isinstance(m, nn.ConvTranspose2d):
+                nn.init.xavier_normal_(m.weight.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.GroupNorm):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def forward(self, x):
+        x = self.Conv1(x)
+        x = self.Conv2(x)
+        x = self.mish(self.GN(self.up_conv(x)))
+
+        return x
+
+
+
 def conv3x3(in_planes, out_planes, stride=1):
     """
     3x3 convolution with padding, default stride 1, shape unchanged

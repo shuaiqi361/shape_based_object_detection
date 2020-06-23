@@ -11,6 +11,7 @@ from .DarkRefineDet import RefineDetDark, RefineDetDarkLoss
 from .DarkRefineScratchDet import RefineDetScratchDark, RefineDetScratchDarkLoss
 from .DarkScratchDet import DarkScratchDetector, DarkScratchDetectorLoss
 from .DarkTrafficDet import DarkTrafficDetector, DarkTrafficDetectorLoss
+from .DarkAttentionTrafficDet import DarkTrafficAttentionDetector, DarkTrafficAttentionDetectorLoss
 
 
 def model_entry(config):
@@ -59,6 +60,9 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'DARKSCRATCHDET':
         print('Loading RefineDet without ARMs, with customized DarkNet53 with Group Norm......')
         return DarkScratchDetector(config['n_classes'], config=config), DarkScratchDetectorLoss
+    elif config.model['arch'].upper() == 'DARKTRAFFICATTENTION':
+        print('Loading RefineDet without attention ......')
+        return DarkAttentionTrafficDet(config['n_classes'], config=config), DarkTrafficAttentionDetectorLoss
     else:
         print('Try other models.')
         raise NotImplementedError
