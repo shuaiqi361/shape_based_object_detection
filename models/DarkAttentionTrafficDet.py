@@ -2,6 +2,7 @@ from torch import nn
 import torch.nn.functional as F
 from math import sqrt
 import torchvision
+import cv2
 from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss
 from metrics import find_jaccard_overlap
@@ -594,7 +595,8 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
 
     def __init__(self, priors_cxcy, config, threshold=0.4, neg_pos_ratio=2, theta=0.1):
         super(DarkTrafficAttentionDetectorLoss, self).__init__()
-        self.fmap_dims = {'DB3': [56, 96],
+        self.fmap_dims = {'DB2': [56 * 2, 96 * 2],
+                          'DB3': [56, 96],
                           'DB4': [28, 48],
                           'DB5': [14, 24],
                           'DB6': [7, 12]}
@@ -732,16 +734,23 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
     def compute_segmentation_loss(self, attention_map, boxes):
         gt_map = torch.zeros(attention_map.size()).to(self.device)
         batch_size = attention_map.size(0)
-        dims = torch.FloatTensor([self.fmap_dims['DB3'][1], self.fmap_dims['DB3'][0],
-                                  self.fmap_dims['DB3'][1], self.fmap_dims['DB3'][0]]).unsqueeze(0).to(self.device)
+        dims = torch.FloatTensor([self.fmap_dims['DB2'][1], self.fmap_dims['DB2'][0],
+                                  self.fmap_dims['DB2'][1], self.fmap_dims['DB2'][0]]).unsqueeze(0).to(self.device)
 
         for i in range(batch_size):
             bboxes = torch.floor(boxes[i] * dims).int()
-            # print(bboxes.size())
+            # print(bboxes.size(), batch_size)
             # print(bboxes)
             # exit()
             for n in range(bboxes.size(0)):
                 gt_map[i, :, bboxes[n, 1]:bboxes[n, 3], bboxes[n, 0]:bboxes[n, 2]] = 1.
+
+            # show the gt attention maps
+        #     img = gt_map[i].permute(1, 2, 0).cpu().numpy()
+        #     cv2.imshow('GT attention map', img)
+        #     cv2.waitKey()
+        #
+        # exit()
 
         loss = self.seg_loss(attention_map, gt_map)
 
@@ -749,6 +758,7 @@ class DarkTrafficAttentionDetectorLoss(nn.Module):
 
     def forward(self, odm_locs, odm_scores, attention_map, boxes, labels, ignored_regions):
         """
+        :param ignored_regions:
         :param attention_map:
         :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
         :param odm_scores:
