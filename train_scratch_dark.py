@@ -115,16 +115,16 @@ def main():
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOC':
         train_dataset = PascalVOCDataset(train_data_folder, split='train', input_size=input_size, config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batchsize, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOCOCO':
         train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batchsize, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
@@ -167,7 +167,7 @@ def main():
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
-    epochs = iterations // (len(train_dataset) // config.batchsize)
+    epochs = iterations // (len(train_dataset) // config.batch_size)
 
     print('total train epochs: ', epochs, ' training starts ......')
     str_print = 'Dataset size: {}'.format(len(train_dataset))
@@ -180,7 +180,7 @@ def main():
     for epoch in range(start_epoch, epochs):
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        evaluate(test_loader, model, optimizer, config=config)
+        # evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
@@ -191,7 +191,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
@@ -242,7 +242,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         data_time.update(time.time() - start)
         optimizer.zero_grad()
         # Bag of Freebies
-        images, boxes, labels = bof_augment(images, boxes, labels, config)
+        images, boxes, labels = bof_augment(images, boxes, labels, config=config)
 
         # Move to default device
         images = torch.stack(images, dim=0).to(config.device)

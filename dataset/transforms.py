@@ -804,12 +804,12 @@ def bof_augment(images, boxes, labels, ignored_regions=None, config=None):
         new_boxes.append(temp_boxes.clamp_(0, 1))
         new_labels.append(temp_labels)
     else:
-        temp_image, temp_boxes = resize(images[2], boxes[2], dims=resize_dim,
+        temp_image, temp_boxes = resize(images[1], boxes[1], dims=resize_dim,
                                         return_percent_coords=config.model['return_percent_coords'])
         temp_image = FT.to_tensor(temp_image)
         temp_image = FT.normalize(temp_image, mean=config.model['mean'], std=config.model['std'])
         new_images.append(temp_image)
-        new_labels.append(labels[2])
+        new_labels.append(labels[1])
         new_boxes.append(temp_boxes.clamp_(0, 1))
 
     # draw augmented images and bboxes

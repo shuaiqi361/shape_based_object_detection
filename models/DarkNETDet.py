@@ -443,7 +443,7 @@ class NETNetDetector(nn.Module):
         dh3, dh4 = self.netm_2(nn_feat2, nn_feat4)
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
-        locs, scores = self.odm_convs(dh1, dh2, dh3, dh4, p_5, p_6)
+        locs, scores = self.detect_convs(dh1, dh2, dh3, dh4, p_5, p_6)
 
         return locs, scores
 
@@ -517,8 +517,8 @@ class NETNetDetectorLoss(nn.Module):
         self.theta = theta
 
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        # self.odm_cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
+        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
 
     def compute_loss(self, odm_locs, odm_scores, boxes, labels):
         """
@@ -583,8 +583,7 @@ class NETNetDetectorLoss(nn.Module):
         positive_priors = true_classes > 0
 
         # LOCALIZATION LOSS
-        loc_loss = self.odm_loss(decoded_odm_locs[positive_priors].view(-1, 4),
-                                 true_locs[positive_priors].view(-1, 4))
+        loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
         # loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
         #                          true_locs_encoded[positive_priors].view(-1, 4))
 
@@ -594,8 +593,8 @@ class NETNetDetectorLoss(nn.Module):
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
-        # conf_loss_all = self.odm_cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        conf_loss_all = self.cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
         conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
 
         # We already know which priors are positive
