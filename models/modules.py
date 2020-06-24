@@ -51,7 +51,7 @@ class ConvGNAct(nn.Module):
             self.act = nn.LeakyReLU()
 
         self.Conv = nn.Conv2d(self.in_planes, self.out_planes, kernel_size=self.kernel_size, padding=self.padding)
-        self.BN = nn.BatchNorm2d(self.out_planes)
+        # self.BN = nn.BatchNorm2d(self.out_planes)
         self.GN = nn.GroupNorm(num_groups=32, num_channels=self.out_planes)
 
         # parameters initialization

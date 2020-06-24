@@ -46,14 +46,12 @@ def main():
     if not os.path.exists(config.event_path):
         os.mkdir(config.event_path)
 
-    batch_size = config.batch_size
-
     with open(config.label_path, 'r') as j:
         config.label_map = json.load(j)
 
     config.n_classes = len(config.label_map)  # number of different types of objects
 
-    iterations = config.optimizer['max_iter'] * config.num_iter_flag
+    iterations = config.optimizer['max_iter']
     workers = config.workers
     val_freq = config.val_freq
     lr = config.optimizer['base_lr']
@@ -182,7 +180,7 @@ def main():
     for epoch in range(start_epoch, epochs):
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # evaluate(test_loader, model, optimizer, config=config)
+        evaluate(test_loader, model, optimizer, config=config)
 
         train(train_loader=train_loader,
               model=model,
@@ -235,7 +233,6 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     optimizer.zero_grad()
     if epoch == 0 and config.optimizer['warm_up']:
         lr_warmup = WarmUpScheduler(config.optimizer['base_lr'], config.optimizer['warm_up_steps'], optimizer)
-    # Batches
 
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         data_time.update(time.time() - start)
