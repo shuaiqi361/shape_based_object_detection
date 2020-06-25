@@ -151,7 +151,7 @@ class NearestNeighborFusionModule(nn.Module):
         # self.up_sample = nn.ConvTranspose2d(self.feat_channels[2], self.feat_channels[2], kernel_size=3, stride=2,
         #                                  padding=1, output_padding=1, bias=self.use_bias)
         # self.up_sample_gn = nn.GroupNorm(32, self.feat_channels[2])
-        self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.up_conv = nn.Conv2d(self.feat_channels[2], self.internal_channels, kernel_size=1, padding=0)
         self.up_gn = nn.GroupNorm(32, self.internal_channels)
 
@@ -183,7 +183,7 @@ class NEModule(nn.Module):
         super(NEModule, self).__init__()
         self.internal_channels = internal_channels
         self.up_factor = up_factor
-        self.up_sample = nn.Upsample(scale_factor=self.up_factor, mode='bilinear')
+        self.up_sample = nn.Upsample(scale_factor=self.up_factor, mode='bilinear', align_corners=True)
         self.gate_conv = nn.Conv2d(self.internal_channels, 1, kernel_size=1, padding=0)
         self.gate_act = nn.Sigmoid()
 
