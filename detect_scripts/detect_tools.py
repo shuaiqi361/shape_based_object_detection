@@ -136,9 +136,9 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
         # if box_type == 'offset':
-        # decoded_locs = cxcy_to_xy(
-        #     gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
-        decoded_locs = predicted_locs[i].clamp_(0, 1)
+        decoded_locs = cxcy_to_xy(
+            gcxgcy_to_cxcy(predicted_locs[i], priors_cxcy)).clamp_(0, 1)
+        # decoded_locs = predicted_locs[i].clamp_(0, 1)
         # elif box_type == 'center':
         #     decoded_locs = cxcy_to_xy(predicted_locs[i]).clamp_(0, 1)
         # else:

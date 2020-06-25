@@ -32,9 +32,9 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/RefineDet_traffic_003'
+root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/Dark_traffic_exp_001'
 folder_path = '/home/keyi/Documents/Data/DETRAC/Insight-MVT_Annotation_Test'
-model_path = os.path.join(root_path, 'snapshots/refinedetboftraffic_detrac_checkpoint_epoch-30.pth.tar')
+model_path = os.path.join(root_path, 'snapshots/darktrafficdet_detrac_checkpoint_epoch-1.pth.tar')
 
 meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
 output_path = os.path.join(root_path, 'live_results/DETRAC')
@@ -85,7 +85,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
 
-        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.15, 0.35, 500,
+        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.25, 0.4, 200,
                                                                 rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
@@ -118,17 +118,17 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
 
     # Forward prop.
     start = time.time()
-    # predicted_locs, predicted_scores = model(image.unsqueeze(0))
-    _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(image.unsqueeze(0))
+    predicted_locs, predicted_scores = model(image.unsqueeze(0))
+    # _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(image.unsqueeze(0))
 
     # Detect objects in SSD output
-    # det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
-    #                                            max_overlap=max_overlap, top_k=top_k,
-    #                                            priors_cxcy=model.priors_cxcy)
     det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
                                                max_overlap=max_overlap, top_k=top_k,
-                                               priors_cxcy=model.priors_cxcy, prior_positives_idx=prior_positives_idx,
-                                               final_nms=True)
+                                               priors_cxcy=model.priors_cxcy, final_nms=True)
+    # det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
+    #                                            max_overlap=max_overlap, top_k=top_k,
+    #                                            priors_cxcy=model.priors_cxcy, prior_positives_idx=prior_positives_idx,
+    #                                            final_nms=True)
     stop = time.time()
     # Move detections to the CPU
     det_boxes_percentage = det_boxes[0].to('cpu')
@@ -142,7 +142,6 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
     det_labels_id = [l for l in det_labels[0].to('cpu').tolist()]
     det_labels = [reverse_label_map[l] for l in det_labels[0].to('cpu').tolist()]
     det_labels_scores = [s for s in det_scores[0].to('cpu').tolist()]
-
     # If no objects found, the detected labels will be set to ['0.']
     # i.e. ['background'] in SSD300.detect_objects() in model.py
     annotated_image = frame.copy()
@@ -161,7 +160,8 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
                       color=hex_to_rgb(label_color_map[det_labels[i]]), thickness=2)
 
         # Text
-        text = det_labels[i].upper()
+        # text = det_labels[i].upper()
+        text = '{:.3f}'.format(det_labels_scores[i])
         label_id = str(det_labels_id[i])
         label_score = det_labels_scores[i]
         label_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, 0.4, 1)
