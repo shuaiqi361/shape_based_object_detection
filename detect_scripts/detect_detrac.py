@@ -32,9 +32,9 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/Dark_traffic_exp_001'
+root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/Dark_attention_001'
 folder_path = '/home/keyi/Documents/Data/DETRAC/Insight-MVT_Annotation_Test'
-model_path = os.path.join(root_path, 'snapshots/darktrafficdet_detrac_checkpoint_epoch-1.pth.tar')
+model_path = os.path.join(root_path, 'snapshots/darktrafficattention_detrac_checkpoint_epoch-10.pth.tar')
 
 meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
 output_path = os.path.join(root_path, 'live_results/DETRAC')
@@ -71,8 +71,10 @@ def detect_folder(folder_path, model_path, meta_data_path):
 
     video_out = cv2.VideoWriter(os.path.join(output_path, folder_name + '.mkv'),
                                 cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
+    video_out_mask = cv2.VideoWriter(os.path.join(output_path, folder_name + '_mask.mkv'),
+                                cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
 
-    output_file = os.path.join(output_path, folder_name + '_Det_RefineDetBof.txt')
+    output_file = os.path.join(output_path, folder_name + '_Det.txt')
     if output_file is not None:
         f_out = open(output_file, 'w')
 
@@ -85,16 +87,23 @@ def detect_folder(folder_path, model_path, meta_data_path):
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
 
-        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.25, 0.4, 200,
-                                                                rev_traffic_label_map, label_color_map)
+        # annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.25, 0.4, 200,
+        #                                                         rev_traffic_label_map, label_color_map)
+
+        annotated_image, time_pframe, frame_info_list, mask = detect_image(frame, model, 0.25, 0.4, 200,
+                                                                     rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
         video_out.write(annotated_image)
+        aligned_mask = cv2.resize(mask, dsize=(width, height))
+        # aligned_mask = mask.copy()
+        video_out_mask.write(np.floor((aligned_mask * 255.)).astype(np.uint8))
         for k in range(len(frame_info_list)):
             f_out.write(str(frame_id + 1) + frame_info_list[k])
 
         frame_id += 1
         cv2.imshow('frame detect', annotated_image)
+        cv2.imshow('aligned mask', aligned_mask)
         # print(str(frame_id) + frame_info)
         # cv2.waitKey()
         # exit()
@@ -118,7 +127,8 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
 
     # Forward prop.
     start = time.time()
-    predicted_locs, predicted_scores = model(image.unsqueeze(0))
+    # predicted_locs, predicted_scores = model(image.unsqueeze(0))
+    predicted_locs, predicted_scores, attention_map = model(image.unsqueeze(0))
     # _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(image.unsqueeze(0))
 
     # Detect objects in SSD output
@@ -181,7 +191,11 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
                                                                                            label_score)
         frame_info_list.append(per_object_prediction_info)
 
-    return annotated_image, - start + stop, frame_info_list
+    # when attention mask is available
+    # print(attention_map.size())
+    mask = attention_map[0].permute(1, 2, 0).detach().cpu().numpy()
+
+    return annotated_image, - start + stop, frame_info_list, mask
 
 
 def print_help():
