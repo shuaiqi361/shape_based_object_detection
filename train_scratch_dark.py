@@ -27,6 +27,7 @@ parser.add_argument('--load-path', default='', type=str)
 parser.add_argument('--save-path', default='', type=str)
 parser.add_argument('--recover', action='store_true')
 parser.add_argument('-e', '--evaluate', action='store_true')
+parser.add_argument('--finetune', action='store_true')
 
 
 def main():
@@ -55,7 +56,9 @@ def main():
     workers = config.workers
     val_freq = config.val_freq
     lr = config.optimizer['base_lr']
-
+    # decay_lr_at = [it * config.num_iter_flag for it in config.optimizer['decay_iter']]
+    #
+    # decay_lr_to = config.optimizer['decay_lr']
     momentum = config.optimizer['momentum']
     weight_decay = config.optimizer['weight_decay']
     if torch.cuda.device_count() < 2:
@@ -68,15 +71,9 @@ def main():
 
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
-
     if not isinstance(config.model['input_size'], list):
         input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
-    now = datetime.now()
-    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
-    config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                'log_{}_{}.txt'.format(config.model['arch'],
-                                                                                       date_time)))
     # Learning parameters
     if args.recover:
         assert args.load_path is not None
@@ -89,19 +86,7 @@ def main():
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
-        if args.finetune:
-            checkpoint = torch.load(args.load_path, map_location=config.device)
-            init_model = checkpoint['model']
-            reuse_layers = {}
-            for param_tensor in init_model.state_dict().keys():
-                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('tcb_convs.') \
-                        or param_tensor.startswith('base.'):
-                    reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
-                    print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
-            model.load_state_dict(reuse_layers, strict=False)
-            str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
-            config.logger.info(str_info)
-        # Initialize the optimizer, with twice the default learning rate for biases
+        # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
         for param_name, param in model.named_parameters():
@@ -121,11 +106,11 @@ def main():
 
     # Custom dataloaders
     if config.data_name.upper() == 'COCO':
-        train_dataset = COCO17Dataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_dataset = COCO17Dataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False)
-        test_dataset = COCO17Dataset(val_data_folder, split='val', input_size=input_size, config=config)
+                                                   pin_memory=False, drop_last=True)
+        test_dataset = COCO17Dataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
@@ -133,7 +118,7 @@ def main():
         train_dataset = PascalVOCDataset(train_data_folder, split='train', input_size=input_size, config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False)
+                                                   pin_memory=False, drop_last=True)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -147,6 +132,7 @@ def main():
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
+
     else:
         raise NotImplementedError
 
@@ -159,6 +145,8 @@ def main():
         model = model.to(config.device)
         optimizer = checkpoint['optimizer']
 
+        now = datetime.now()
+        date_time = now.strftime("%m-%d-%Y_H-%M-%S")
         config.logger = create_logger('global_logger', os.path.join(config.log_path,
                                                                     'eval_result_{}_{}.txt'.format(config.model['arch'],
                                                                                                    date_time)))
@@ -174,14 +162,14 @@ def main():
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
     config.tb_logger = SummaryWriter(config.event_path)
-
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                                'log_{}_{}.txt'.format(config.model['arch'],
+                                                                                       date_time)))
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
     epochs = iterations // (len(train_dataset) // config.batch_size)
 
-    # decay_lr_at = [it // (len(train_dataset) // config.internal_batch_size) for it in
-    #                decay_lr_at]  # calculate epoch to decay
     print('total train epochs: ', epochs, ' training starts ......')
     str_print = 'Dataset size: {}'.format(len(train_dataset))
     config.logger.info(str_print)
