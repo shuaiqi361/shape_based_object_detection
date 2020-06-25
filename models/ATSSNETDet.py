@@ -388,7 +388,8 @@ class DetectorConvolutions(nn.Module):
         # classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
         #
         # return locs, classes_scores
-        return [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
+        return [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], \
+               [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
 
 
 class NETNetDetector(nn.Module):

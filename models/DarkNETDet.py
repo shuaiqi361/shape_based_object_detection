@@ -399,7 +399,7 @@ class NETNetDetector(nn.Module):
         self.device = config.device
         self.n_classes = n_classes
         self.theta = 0.01
-        self.config = config
+        # self.config = config
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
@@ -513,7 +513,7 @@ class NETNetDetectorLoss(nn.Module):
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
-        self.config = config
+        # self.config = config
         self.theta = theta
 
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
