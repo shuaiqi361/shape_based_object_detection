@@ -3,8 +3,9 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss
+from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss, focal_loss
 from metrics import find_jaccard_overlap
+from operators.iou_utils import find_distance
 from .modules import Mish, ConvGNAct
 
 
@@ -80,14 +81,14 @@ class DarknetBase(nn.Module):
         self.GN_t5 = nn.GroupNorm(32, 256)
 
         self.DarkB6 = DarkBlock(256, 2)
-        self.transit_6 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (4, 4)
-        self.GN_t6 = nn.GroupNorm(32, 256)
+        self.transit_6 = nn.Conv2d(256, 192, kernel_size=3, padding=1, stride=2)  # (4, 4)
+        self.GN_t6 = nn.GroupNorm(32, 192)
 
-        self.DarkB7 = DarkBlock(256, 2)
-        self.transit_7 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (2, 2)
-        self.GN_t7 = nn.GroupNorm(32, 256)
+        self.DarkB7 = DarkBlock(192, 2)
+        self.transit_7 = nn.Conv2d(192, 192, kernel_size=3, padding=1, stride=2)  # (2, 2)
+        self.GN_t7 = nn.GroupNorm(32, 192)
 
-        self.DarkB8 = DarkBlock(256, 2)
+        self.DarkB8 = DarkBlock(192, 2)
 
         self.mish = Mish()
 
@@ -275,36 +276,36 @@ class DetectorConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'DB3': 3,
-                   'DB4': 3,
-                   'DB5': 3,
-                   'DB6': 3,
-                   'DB7': 3,
-                   'DB8': 3}
+        n_boxes = {'DB3': 1,
+                   'DB4': 1,
+                   'DB5': 1,
+                   'DB6': 1,
+                   'DB7': 1,
+                   'DB8': 1}
 
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 256,
-                              'DB8': 256}
+                              'DB7': 192,
+                              'DB8': 192}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
         self.loc_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * 4, kernel_size=3, padding=1)
         self.loc_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * 4, kernel_size=3, padding=1)
         self.loc_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * 4, kernel_size=3, padding=1)
-        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * 4, kernel_size=3, padding=1)
-        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * 4, kernel_size=3, padding=1)
+        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * 4, kernel_size=3, padding=1)
+        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * 4, kernel_size=3, padding=1)
 
         # Class prediction convolutions (predict classes in localization boxes)
         self.cl_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -358,7 +359,7 @@ class DetectorConvolutions(nn.Module):
         l_conv8 = l_conv8.view(batch_size, -1, 4)
 
         # # Predict classes in localization boxes
-        c_conv3 = self.cl_conv3(conv3)
+        c_conv3 = self.cl_conv4(conv3)
         c_conv3 = c_conv3.permute(0, 2, 3, 1).contiguous()
         c_conv3 = c_conv3.view(batch_size, -1, self.n_classes)
 
@@ -383,10 +384,11 @@ class DetectorConvolutions(nn.Module):
         c_conv8 = c_conv8.view(batch_size, -1, self.n_classes)
 
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        locs = torch.cat([l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], dim=1).contiguous()
-        classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
-
-        return locs, classes_scores
+        # locs = torch.cat([l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], dim=1).contiguous()
+        # classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
+        #
+        # return locs, classes_scores
+        return [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
 
 
 class NETNetDetector(nn.Module):
@@ -398,15 +400,14 @@ class NETNetDetector(nn.Module):
         super(NETNetDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
-        self.theta = 0.01
         self.config = config
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 256,
-                              'DB8': 256}
+                              'DB7': 192,
+                              'DB8': 192}
 
         self.base = DarknetBase()
         self.nnfm_1 = NearestNeighborFusionModule([self.feat_channels['DB2'], self.feat_channels['DB3'],
@@ -460,26 +461,33 @@ class NETNetDetector(nn.Module):
                      'DB7': [4, 4],
                      'DB8': [2, 2]}
 
-        obj_scales = {'DB3': 0.03,
-                      'DB4': 0.07,
-                      'DB5': 0.15,
-                      'DB6': 0.3,
-                      'DB7': 0.5,
-                      'DB8': 0.7}
+        obj_scales = {'DB3': 0.04,
+                      'DB4': 0.08,
+                      'DB5': 0.16,
+                      'DB6': 0.32,
+                      'DB7': 0.56,
+                      'DB8': 0.8}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
-        aspect_ratios = {'DB3': [1., 2., 0.5],
-                         'DB4': [1., 2., 0.5],
-                         'DB5': [1., 2., 0.5],
-                         'DB6': [1., 2., 0.5],
-                         'DB7': [1., 2., 0.5],
-                         'DB8': [1., 2., 0.5]}
+        # aspect_ratios = {'DB3': [1., 2., 0.5],
+        #                  'DB4': [1., 2., 0.5],
+        #                  'DB5': [1., 2., 0.5],
+        #                  'DB6': [1., 2., 0.5],
+        #                  'DB7': [1., 2., 0.5],
+        #                  'DB8': [1., 2., 0.5]}
+        aspect_ratios = {'DB3': [1.],
+                         'DB4': [1.],
+                         'DB5': [1.],
+                         'DB6': [1.],
+                         'DB7': [1.],
+                         'DB8': [1.]}
 
         fmaps = list(fmap_dims.keys())
 
         prior_boxes = []
 
         for k, fmap in enumerate(fmaps):
+            temp_prior_boxes = []
             for i in range(fmap_dims[fmap][0]):
                 for j in range(fmap_dims[fmap][1]):
                     cx = (j + 0.5) / fmap_dims[fmap][1]  # sliding center locations across the feature maps
@@ -487,11 +495,12 @@ class NETNetDetector(nn.Module):
 
                     for ratio in aspect_ratios[fmap]:
                         for fac in scale_factor:
-                            prior_boxes.append([cx, cy, obj_scales[fmap] * fac * sqrt(ratio),
+                            temp_prior_boxes.append([cx, cy, obj_scales[fmap] * fac * sqrt(ratio),
                                                 obj_scales[fmap] * fac / sqrt(ratio)])
 
-        prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
-        prior_boxes.clamp_(0, 1)
+            temp_prior_boxes = torch.FloatTensor(temp_prior_boxes).to(self.device).contiguous()
+            temp_prior_boxes.clamp_(0, 1)
+            prior_boxes.append(temp_prior_boxes)
 
         return prior_boxes
 
@@ -504,43 +513,54 @@ class NETNetDetectorLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.1):
+    def __init__(self, priors_cxcy, config, n_candidates=9):
         super(NETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
-        self.priors_xy = cxcy_to_xy(priors_cxcy)
-        self.threshold = threshold
-        self.neg_pos_ratio = neg_pos_ratio
+        self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
         self.config = config
-        self.theta = theta
+        self.n_candidates = n_candidates
 
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
+        # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=self.config)
+        # self.FocalLoss = focal_loss
 
-    def forward(self, odm_locs, odm_scores, boxes, labels):
+    def compute_loss(self, predicted_locs, predicted_scores, boxes, labels):
         """
-        :param odm_locs: predicted bboxes
-        :param odm_scores: predicted scores for each bbox
+        :param predicted_scores: list of predicted class scores for each feature level
+        :param predicted_locs: list of predicted bboxes for each feature level
         :param boxes: gt
         :param labels: gt
         :return:
         """
-        batch_size = odm_locs.size(0)
-        n_priors = self.priors_cxcy.size(0)
-        n_classes = odm_scores.size(2)
+        n_levels = len(predicted_locs)
+        batch_size = predicted_locs[0].size(0)
+        n_priors = [prior.size(0) for prior in self.priors_cxcy]
+        n_classes = predicted_scores[0].size(2)
 
-        assert n_priors == odm_locs.size(1) == odm_scores.size(1)
+        total_predicted_bboxes = sum([loc.size(1) for loc in predicted_locs])
+        assert n_priors == total_predicted_bboxes
 
-        decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
+        # true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
+        decoded_locs = list()
+        true_locs = list()
+        true_classes = list()
 
         # For each image
         for i in range(batch_size):
+            image_bboxes = boxes[i]
+            positive_samples = list()
+            for level in range(n_levels):
+                distance = find_distance(xy_to_cxcy(image_bboxes), self.priors_cxcy[level])  # n_bboxes, n_priors
+
+
+
             overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
 
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -583,8 +603,7 @@ class NETNetDetectorLoss(nn.Module):
         positive_priors = true_classes > 0
 
         # LOCALIZATION LOSS
-        loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4),
-                                        true_locs[positive_priors].view(-1, 4))
+        loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
         # loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
         #                          true_locs_encoded[positive_priors].view(-1, 4))
 
@@ -609,7 +628,7 @@ class NETNetDetectorLoss(nn.Module):
         conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
                                               descending=True)  # (N, 8732), sorted by decreasing hardness
         hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-            self.device)
+            self.device)  # (N, 8732)
         hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
         conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
 
@@ -618,3 +637,17 @@ class NETNetDetectorLoss(nn.Module):
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
 
+    def forward(self, odm_locs, odm_scores, boxes, labels):
+        """
+        :param arm_locs: offset prediction and binary classification scores from Anchor Refinement Modules
+        :param arm_scores:10
+        :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
+        :param odm_scores:
+        :param boxes: gt bbox and labels
+        :param labels:
+        :return:
+        """
+        loss = self.compute_loss(odm_locs, odm_scores, boxes, labels)
+
+        # TOTAL LOSS
+        return loss

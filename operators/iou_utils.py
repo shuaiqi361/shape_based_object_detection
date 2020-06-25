@@ -3,6 +3,23 @@ import torch
 import math
 
 
+def find_distance(bboxes, priors):
+    """
+    :param bboxes: (n, 4) in center-convention, i.e. (cx, cy, w, h)
+    :param priors: (m, 4) in center-convention, i.e. (cx, cy, w, h)
+    :return: distance matrix with shape n, m
+    """
+    n = bboxes.size(0)
+    m = priors.size(0)
+
+    center_bboxes = bboxes[:, :2].unsqueeze(1).expand(n, m, 2)
+    center_priors = priors[:, :2].unsqueeze(0).expand(n, m, 2)
+
+    dist = torch.sqrt(torch.sum((center_bboxes - center_priors) ** 2, dim=2))
+
+    return dist
+
+
 def bbox_overlaps_diou(bboxes1, bboxes2):
     rows = bboxes1.shape[0]
     cols = bboxes2.shape[0]
