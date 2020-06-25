@@ -6,7 +6,7 @@ from .iou_utils import bbox_overlaps_iou, bbox_overlaps_ciou, bbox_overlaps_diou
 from torch.autograd import Variable
 
 
-def focal_loss(y_pred, y_true, alpha=0.25, gamma=2, device='cuda:0'):
+def focal_loss(y_pred, y_true, alpha=0.25, gamma=2.0, device='cuda:0'):
     if isinstance(alpha, (list, tuple)):
         fore_alpha = alpha[0]  # postive sample ratio in the entire dataset
         back_alpha = alpha[1]  # (1-alpha) # negative ratio in the entire dataset
@@ -47,13 +47,13 @@ class SigmoidFocalLoss(nn.Module):
 
     def forward(self, out, target):
         # print(out.size(), target.size())
-        n_class = out.shape[1]  # 81 for COCO
+        n_class = out.shape[1] - 1  # excluding background class when using Sigmoid Focal Loss, 80 for COCO
         class_ids = torch.arange(
-            1, n_class, dtype=target.dtype, device=target.device
+            0, n_class, dtype=target.dtype, device=target.device
         ).unsqueeze(0)
         # print(class_ids.size())
 
-        t = target.unsqueeze(1)
+        t = (target - 1).unsqueeze(1)  # background class has label -1
         # p = torch.sigmoid(out).clamp(min=1e-4, max=1-1e-4)
         p = torch.sigmoid(out[:, 1:])  # excluding the background class
 
@@ -70,7 +70,7 @@ class SigmoidFocalLoss(nn.Module):
         # )
         loss = (
                 -(t == class_ids).float() * alpha * term1
-                - ((t != class_ids) * (t > 0)).float() * (1 - alpha) * term2
+                - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
         )
         # y = (t == class_ids).float()
         #

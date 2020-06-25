@@ -31,25 +31,40 @@ def warm_up_learning_rate(optimizer, rate=5.):
 
 
 class WarmUpScheduler(object):
-    def __init__(self, target_lr, n_steps, optimizer):
+    def __init__(self, target_lr, n_steps, optimizer, types='exp'):
         self.target_lr = target_lr
-        # self.init_lr = target_lr / (2. ** n_steps)
-        self.init_lr = target_lr * 0.05
         self.n_steps = n_steps
-        self.rate = (self.target_lr - self.init_lr) / self.n_steps
         self.optimizer = optimizer
-        # for param_group in optimizer.param_groups:
-        #     param_group['lr'] = param_group['lr'] / (2 ** n_steps)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = self.init_lr
-        print('Warming up lr from {:.6f}'.format(self.init_lr))
+        self.init_scheduler(types)
 
-    def update(self):
-        if self.n_steps > 0:
+    def init_scheduler(self, types):
+        if types.lower() == 'exp':
+            self.rate = 2.
+            self.init_lr = self.target_lr / (self.rate ** self.n_steps)
             for param_group in self.optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] + (self.target_lr - self.init_lr) / self.n_steps
-            print('New lr {:.6f}'.format(self.target_lr - self.rate * (self.n_steps - 1)))
+                param_group['lr'] = param_group['lr'] / (self.rate ** self.n_steps)
+            print('EXP Warming up lr from {:.6f}'.format(self.init_lr))
         else:
-            return
+            self.init_lr = self.target_lr * 0.1
+            self.rate = (self.target_lr - self.init_lr) / self.n_steps
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = self.init_lr
+            print('Linear Warming up lr from {:.6f}'.format(self.init_lr))
+
+    def update(self, types='exp'):
+        if types.lower == 'exp':
+            if self.n_steps > 0:
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * self.rate
+                print('New lr {:.6f}'.format(self.target_lr / (self.rate ** (self.n_steps - 1))))
+            else:
+                return
+        else:
+            if self.n_steps > 0:
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] + (self.target_lr - self.init_lr) / self.n_steps
+                print('New lr {:.6f}'.format(self.target_lr - self.rate * (self.n_steps - 1)))
+            else:
+                return
 
         self.n_steps -= 1

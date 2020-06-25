@@ -27,6 +27,7 @@ parser.add_argument('--load-path', default='', type=str)
 parser.add_argument('--save-path', default='', type=str)
 parser.add_argument('--recover', action='store_true')
 parser.add_argument('-e', '--evaluate', action='store_true')
+parser.add_argument('--finetune', action='store_true')
 
 
 def main():
