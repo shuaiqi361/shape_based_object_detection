@@ -238,7 +238,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         data_time.update(time.time() - start)
         if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
-            lr_warmup.update()
+            lr_warmup.update(types='exp')
 
         data_time.update(time.time() - start)
         optimizer.zero_grad()

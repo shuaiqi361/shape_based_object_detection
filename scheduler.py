@@ -52,11 +52,13 @@ class WarmUpScheduler(object):
             print('Linear Warming up lr from {:.6f}'.format(self.init_lr))
 
     def update(self, types='exp'):
-        if types.lower == 'exp':
+        if types.lower() == 'exp':
             if self.n_steps > 0:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = param_group['lr'] * self.rate
+                # print(self.n_steps, self.target_lr, self.rate)
                 print('New lr {:.6f}'.format(self.target_lr / (self.rate ** (self.n_steps - 1))))
+
             else:
                 return
         else:
