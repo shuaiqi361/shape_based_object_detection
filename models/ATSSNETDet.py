@@ -392,13 +392,13 @@ class DetectorConvolutions(nn.Module):
                [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
 
 
-class NETNetDetector(nn.Module):
+class ATSSNETNetDetector(nn.Module):
     """
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
     def __init__(self, n_classes, config):
-        super(NETNetDetector, self).__init__()
+        super(ATSSNETNetDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
         self.config = config
@@ -506,7 +506,7 @@ class NETNetDetector(nn.Module):
         return prior_boxes
 
 
-class NETNetDetectorLoss(nn.Module):
+class ATSSNETNetDetectorLoss(nn.Module):
     """
     The RetinaFocalLoss, a loss function for object detection from RetinaNet.
     This is a combination of:
@@ -515,7 +515,7 @@ class NETNetDetectorLoss(nn.Module):
     """
 
     def __init__(self, priors_cxcy, config, n_candidates=9):
-        super(NETNetDetectorLoss, self).__init__()
+        super(ATSSNETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
         self.alpha = config.reg_weights
@@ -529,7 +529,7 @@ class NETNetDetectorLoss(nn.Module):
         self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=self.config)
         # self.FocalLoss = focal_loss
 
-    def compute_loss(self, predicted_locs, predicted_scores, boxes, labels):
+    def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
         :param predicted_scores: list of predicted class scores for each feature level
         :param predicted_locs: list of predicted bboxes for each feature level
@@ -549,106 +549,103 @@ class NETNetDetectorLoss(nn.Module):
         # true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         # true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
-        decoded_locs = list()
+        decoded_locs = list()  # length is the batch size
         true_locs = list()
         true_classes = list()
+        # positive_priors = list()
+        predicted_class_scores = list()
 
         # For each image
         for i in range(batch_size):
             image_bboxes = boxes[i]
             positive_samples = list()
+            # predicted_pos_locs = list()
+            positive_samples_idx = list()
+            positive_overlaps = list()
+            overlap = list()
             for level in range(n_levels):
                 distance = find_distance(xy_to_cxcy(image_bboxes), self.priors_cxcy[level])  # n_bboxes, n_priors
+                _, top_idx_level = torch.topk(distance, self.n_candidates, dim=1)
+                print(distance.size(), top_idx_level.size())
 
+                level_priors = self.priors_cxcy[level].unsqueeze(0).expand(image_bboxes.size(0),
+                                                                          self.priors_cxcy[level].size(0))
+                # level_predictions = predicted_locs[i][level].unsqueeze(0).expand(image_bboxes.size(0),
+                #                                             self.priors_cxcy[level].size(0))
+                positive_samples.append(level_priors[top_idx_level])
+                positive_samples_idx.append(top_idx_level)
+                # predicted_pos_locs.append(cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[level]), self.priors_cxcy[level]))
+                overlap_level = find_jaccard_overlap(image_bboxes, self.priors_xy[level])  # overlap for each level
+                positive_overlaps.append(overlap_level[top_idx_level])
+                overlap.append(overlap_level)
 
+            positive_overlaps_cat = torch.cat(positive_overlaps, dim=1)  # n_bboxes, n_priors * 6level
+            overlap_mean = torch.mean(positive_overlaps_cat, dim=1)
+            overlap_std = torch.std(positive_overlaps_cat, dim=1)
+            iou_threshold = overlap_mean + overlap_std  # n_bboxes, for each object, we have one threshold
 
-            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # initial overlap
-
+            # one prior can only be associated to one gt object
             # For each prior, find the object that has the maximum overlap, return [value, indices]
-            overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (22536)
+            # overlap = torch.cat(overlap, dim=1)
+            true_classes_level = list()
+            true_locs_level = list()
+            decoded_locs_level = list()
+            for level in range(n_levels):
+                positive_priors_per_level = torch.zeros((self.priors_cxcy[level].size(0)),
+                                                        dtype=torch.uint8).to(self.device)
+                label_for_each_prior_per_level = torch.zeros((self.priors_cxcy[level].size(0)),
+                                                        dtype=torch.uint8).to(self.device)
+                true_locs_per_level = list()
+                decoded_locs_per_level = list()
+                total_decoded_locs = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i][level]), self.priors_cxcy[level])
+                # overlap_for_each_prior, object_for_each_prior = overlap[level].max(dim=0)
+                # overlap_for_each_object, prior_for_each_object = overlap[level].max(dim=1)
+                for ob in range(image_bboxes.size(0)):
+                    for c in range(len(positive_samples_idx[level][ob])):
 
-            # We don't want a situation where an object is not represented in our positive (non-background) priors -
-            # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.
-            # 2. All priors with the object may be assigned as background based on the threshold (0.5).
+                        current_iou = positive_overlaps[level][ob, c]
+                        current_bbox = image_bboxes[ob, :]
+                        current_prior = self.priors_cxcy[level][positive_samples_idx[level][ob, c]]
+                        if current_iou > iou_threshold[ob]:
+                            if current_bbox[0] <= current_prior[0] <= current_bbox[2] \
+                                    and current_bbox[1] <= current_prior[1] <= current_bbox[3]:
+                                positive_priors_per_level[positive_samples_idx[level][ob, c]] = 1
+                                # if current_iou == overlap_for_each_prior[positive_samples_idx[level][ob, c]]:
+                                label_for_each_prior_per_level[positive_samples_idx[level][ob, c]] = labels[i][ob]
+                                temp_true_locs = image_bboxes[level][ob, :].unsqueeze(0)  # (1, 4)
+                                temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][ob, c], :]  # (1, 4)
+                                true_locs_per_level.append(temp_true_locs)
+                                decoded_locs_per_level.append(temp_decoded_locs)
 
-            # To remedy this -
-            # First, find the prior that has the maximum overlap for each object.
-            overlap_for_each_object, prior_for_each_object = overlap.max(dim=1)  # (N_o)
-            prior_for_each_object = prior_for_each_object[overlap_for_each_object > 0]
-            # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            if len(prior_for_each_object) > 0:
-                overlap_for_each_prior.index_fill_(0, prior_for_each_object, 1.0)
-
-            for j in range(prior_for_each_object.size(0)):
-                object_for_each_prior[prior_for_each_object[j]] = j
-
-            # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]
-
-            # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+                true_locs_level.append(torch.cat(true_locs_per_level, dim=0).unsqueeze(0))  # (1, n_l, 4)
+                decoded_locs_level.append(torch.cat(decoded_locs_per_level, dim=0).unsqueeze(0))
+                true_classes_level.append(label_for_each_prior_per_level)
+                assert len(label_for_each_prior_per_level) == len(predicted_locs[i][level])
+                assert torch.cat(decoded_locs_per_level, dim=0).size(0) == torch.cat(true_locs_per_level, dim=0).size(0)
 
             # Store
-            true_classes[i] = label_for_each_prior
-
-            # Encode center-size object coordinates into the form we regressed predicted boxes to
-            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
-            #                                       xy_to_cxcy(decoded_arm_locs[i]))
-            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
-            true_locs[i] = boxes[i][object_for_each_prior]
+            true_classes.append(torch.cat(true_classes_level, dim=0))  # batch_size, n_priors
+            true_locs.append(torch.cat(true_locs_level, dim=0))  # batch_size, n_pos, 4
             # print(odm_locs.size(), decoded_arm_locs.size())
-            decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
+            decoded_locs.append(torch.cat(decoded_locs_level, dim=0))
+            predicted_class_scores.append(torch.cat(predicted_scores[i], dim=0))
 
-        # Identify priors that are positive (object/non-background)
+        # assemble all samples from batches
+        true_classes = torch.cat(true_classes, dim=0)
         positive_priors = true_classes > 0
+        predicted_scores = torch.cat(predicted_class_scores, dim=0)
+        true_locs = torch.cat(true_locs, dim=0)
+        decoded_locs = torch.cat(decoded_locs, dim=0)
 
         # LOCALIZATION LOSS
-        loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
-        # loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
-        #                          true_locs_encoded[positive_priors].view(-1, 4))
+        loc_loss = self.regression_loss(decoded_locs, true_locs)
 
         # CONFIDENCE LOSS
-        # Number of positive and hard-negative priors per image
-        n_positives = positive_priors.sum(dim=1)  # (N)
-        n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
+        n_positives = positive_priors.sum()
 
         # First, find the loss for all priors
-        conf_loss_all = self.cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
-
-        # We already know which priors are positive
-        conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
-
-        # Next, find which priors are hard-negative
-        # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-        conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-        conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
-                                              descending=True)  # (N, 8732), sorted by decreasing hardness
-        hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-            self.device)  # (N, 8732)
-        hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
-        conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
-
-        conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
+        conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
 
-    def forward(self, odm_locs, odm_scores, boxes, labels):
-        """
-        :param arm_locs: offset prediction and binary classification scores from Anchor Refinement Modules
-        :param arm_scores:10
-        :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
-        :param odm_scores:
-        :param boxes: gt bbox and labels
-        :param labels:
-        :return:
-        """
-        loss = self.compute_loss(odm_locs, odm_scores, boxes, labels)
-
-        # TOTAL LOSS
-        return loss
