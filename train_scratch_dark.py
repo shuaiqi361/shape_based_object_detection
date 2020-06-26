@@ -192,7 +192,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:

@@ -80,14 +80,14 @@ class DarknetBase(nn.Module):
         self.GN_t5 = nn.GroupNorm(32, 256)
 
         self.DarkB6 = DarkBlock(256, 2)
-        self.transit_6 = nn.Conv2d(256, 192, kernel_size=3, padding=1, stride=2)  # (4, 4)
-        self.GN_t6 = nn.GroupNorm(32, 192)
+        self.transit_6 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (4, 4)
+        self.GN_t6 = nn.GroupNorm(32, 256)
 
-        self.DarkB7 = DarkBlock(192, 2)
-        self.transit_7 = nn.Conv2d(192, 192, kernel_size=3, padding=1, stride=2)  # (2, 2)
-        self.GN_t7 = nn.GroupNorm(32, 192)
+        self.DarkB7 = DarkBlock(256, 2)
+        self.transit_7 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (2, 2)
+        self.GN_t7 = nn.GroupNorm(32, 256)
 
-        self.DarkB8 = DarkBlock(192, 2)
+        self.DarkB8 = DarkBlock(256, 2)
 
         self.mish = Mish()
 
@@ -287,24 +287,24 @@ class DetectorConvolutions(nn.Module):
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 192,
-                              'DB8': 192}
+                              'DB7': 256,
+                              'DB8': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
         self.loc_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * 4, kernel_size=3, padding=1)
         self.loc_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * 4, kernel_size=3, padding=1)
         self.loc_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * 4, kernel_size=3, padding=1)
-        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * 4, kernel_size=3, padding=1)
-        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * 4, kernel_size=3, padding=1)
+        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * 4, kernel_size=3, padding=1)
+        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * 4, kernel_size=3, padding=1)
 
         # Class prediction convolutions (predict classes in localization boxes)
         self.cl_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -358,7 +358,7 @@ class DetectorConvolutions(nn.Module):
         l_conv8 = l_conv8.view(batch_size, -1, 4)
 
         # # Predict classes in localization boxes
-        c_conv3 = self.cl_conv4(conv3)
+        c_conv3 = self.cl_conv3(conv3)
         c_conv3 = c_conv3.permute(0, 2, 3, 1).contiguous()
         c_conv3 = c_conv3.view(batch_size, -1, self.n_classes)
 
@@ -399,14 +399,14 @@ class NETNetDetector(nn.Module):
         self.device = config.device
         self.n_classes = n_classes
         self.theta = 0.01
-        self.config = config
+
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 192,
-                              'DB8': 192}
+                              'DB7': 256,
+                              'DB8': 256}
 
         self.base = DarknetBase()
         self.nnfm_1 = NearestNeighborFusionModule([self.feat_channels['DB2'], self.feat_channels['DB3'],
@@ -513,14 +513,14 @@ class NETNetDetectorLoss(nn.Module):
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
-        self.config = config
+
         self.theta = theta
 
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
 
-    def compute_loss(self, odm_locs, odm_scores, boxes, labels):
+    def forward(self, odm_locs, odm_scores, boxes, labels):
         """
         :param odm_locs: predicted bboxes
         :param odm_scores: predicted scores for each bbox
@@ -616,18 +616,3 @@ class NETNetDetectorLoss(nn.Module):
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
-
-    def forward(self, odm_locs, odm_scores, boxes, labels):
-        """
-        :param arm_locs: offset prediction and binary classification scores from Anchor Refinement Modules
-        :param arm_scores:10
-        :param odm_locs: offset refinement prediction and multi-class classification scores from ODM
-        :param odm_scores:
-        :param boxes: gt bbox and labels
-        :param labels:
-        :return:
-        """
-        loss = self.compute_loss(odm_locs, odm_scores, boxes, labels)
-
-        # TOTAL LOSS
-        return loss
