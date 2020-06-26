@@ -81,14 +81,14 @@ class DarknetBase(nn.Module):
         self.GN_t5 = nn.GroupNorm(32, 256)
 
         self.DarkB6 = DarkBlock(256, 2)
-        self.transit_6 = nn.Conv2d(256, 192, kernel_size=3, padding=1, stride=2)  # (4, 4)
-        self.GN_t6 = nn.GroupNorm(32, 192)
+        self.transit_6 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (4, 4)
+        self.GN_t6 = nn.GroupNorm(32, 256)
 
-        self.DarkB7 = DarkBlock(192, 2)
-        self.transit_7 = nn.Conv2d(192, 192, kernel_size=3, padding=1, stride=2)  # (2, 2)
-        self.GN_t7 = nn.GroupNorm(32, 192)
+        self.DarkB7 = DarkBlock(256, 2)
+        self.transit_7 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)  # (2, 2)
+        self.GN_t7 = nn.GroupNorm(32, 256)
 
-        self.DarkB8 = DarkBlock(192, 2)
+        self.DarkB8 = DarkBlock(256, 2)
 
         self.mish = Mish()
 
@@ -119,6 +119,9 @@ class DarknetBase(nn.Module):
         DB6_feats = self.DarkB6(self.mish(self.GN_t5(self.transit_5(DB5_feats))))  # (N, 256, 8, 8)
         DB7_feats = self.DarkB7(self.mish(self.GN_t6(self.transit_6(DB6_feats))))  # (N, 192, 4, 4)
         DB8_feats = self.DarkB8(self.mish(self.GN_t7(self.transit_7(DB7_feats))))  # (N, 192, 2, 2)
+
+        # print('feature maps:')
+        # print([p.size() for p in [DB2_feats, DB3_feats, DB4_feats, DB5_feats, DB6_feats, DB7_feats, DB8_feats]])
 
         return DB2_feats, DB3_feats, DB4_feats, DB5_feats, DB6_feats, DB7_feats, DB8_feats
 
@@ -152,7 +155,7 @@ class NearestNeighborFusionModule(nn.Module):
         # self.up_sample = nn.ConvTranspose2d(self.feat_channels[2], self.feat_channels[2], kernel_size=3, stride=2,
         #                                  padding=1, output_padding=1, bias=self.use_bias)
         # self.up_sample_gn = nn.GroupNorm(32, self.feat_channels[2])
-        self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.up_conv = nn.Conv2d(self.feat_channels[2], self.internal_channels, kernel_size=1, padding=0)
         self.up_gn = nn.GroupNorm(32, self.internal_channels)
 
@@ -184,7 +187,7 @@ class NEModule(nn.Module):
         super(NEModule, self).__init__()
         self.internal_channels = internal_channels
         self.up_factor = up_factor
-        self.up_sample = nn.Upsample(scale_factor=self.up_factor, mode='bilinear')
+        self.up_sample = nn.Upsample(scale_factor=self.up_factor, mode='bilinear', align_corners=True)
         self.gate_conv = nn.Conv2d(self.internal_channels, 1, kernel_size=1, padding=0)
         self.gate_act = nn.Sigmoid()
 
@@ -288,24 +291,24 @@ class DetectorConvolutions(nn.Module):
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 192,
-                              'DB8': 192}
+                              'DB7': 256,
+                              'DB8': 256}
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
         self.loc_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * 4, kernel_size=3, padding=1)
         self.loc_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * 4, kernel_size=3, padding=1)
         self.loc_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * 4, kernel_size=3, padding=1)
         self.loc_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * 4, kernel_size=3, padding=1)
-        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * 4, kernel_size=3, padding=1)
-        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * 4, kernel_size=3, padding=1)
+        self.loc_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * 4, kernel_size=3, padding=1)
+        self.loc_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * 4, kernel_size=3, padding=1)
 
         # Class prediction convolutions (predict classes in localization boxes)
         self.cl_conv3 = nn.Conv2d(internal_channels, n_boxes['DB3'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv4 = nn.Conv2d(internal_channels, n_boxes['DB4'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv5 = nn.Conv2d(internal_channels, n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv6 = nn.Conv2d(internal_channels, n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB5'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB6'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv7 = nn.Conv2d(self.feat_channels['DB7'], n_boxes['DB7'] * n_classes, kernel_size=3, padding=1)
+        self.cl_conv8 = nn.Conv2d(self.feat_channels['DB8'], n_boxes['DB8'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -359,7 +362,7 @@ class DetectorConvolutions(nn.Module):
         l_conv8 = l_conv8.view(batch_size, -1, 4)
 
         # # Predict classes in localization boxes
-        c_conv3 = self.cl_conv4(conv3)
+        c_conv3 = self.cl_conv3(conv3)
         c_conv3 = c_conv3.permute(0, 2, 3, 1).contiguous()
         c_conv3 = c_conv3.view(batch_size, -1, self.n_classes)
 
@@ -384,12 +387,15 @@ class DetectorConvolutions(nn.Module):
         c_conv8 = c_conv8.view(batch_size, -1, self.n_classes)
 
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        # locs = torch.cat([l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], dim=1).contiguous()
-        # classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
-        #
-        # return locs, classes_scores
-        return [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], \
-               [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
+        locs = torch.cat([l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], dim=1).contiguous()
+        classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
+
+        return locs, classes_scores
+        # print([p.size() for p in [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8]])
+        # print([p.size() for p in [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]])
+        # exit()
+        # return [l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], \
+        #        [c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8]
 
 
 class ATSSNETNetDetector(nn.Module):
@@ -401,14 +407,13 @@ class ATSSNETNetDetector(nn.Module):
         super(ATSSNETNetDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
-        self.config = config
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
                               'DB5': 256,
                               'DB6': 256,
-                              'DB7': 192,
-                              'DB8': 192}
+                              'DB7': 256,
+                              'DB8': 256}
 
         self.base = DarknetBase()
         self.nnfm_1 = NearestNeighborFusionModule([self.feat_channels['DB2'], self.feat_channels['DB3'],
@@ -422,7 +427,7 @@ class ATSSNETNetDetector(nn.Module):
         self.netm_1 = NeighborErasingTransferModule(256)
         self.netm_2 = NeighborErasingTransferModule(256)
 
-        self.detect_convs = DetectorConvolutions(self.config.n_classes, 256)
+        self.detect_convs = DetectorConvolutions(self.n_classes, 256)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -441,8 +446,12 @@ class ATSSNETNetDetector(nn.Module):
         nn_feat3 = self.nnfm_3(p_2, p_3, p_4)
         nn_feat4 = self.nnfm_4(p_3, p_4, p_5)
 
-        dh1, dh2 = self.netm_1(nn_feat1, nn_feat3)
-        dh3, dh4 = self.netm_2(nn_feat2, nn_feat4)
+        dh1, dh3 = self.netm_1(nn_feat1, nn_feat3)
+        dh2, dh4 = self.netm_2(nn_feat2, nn_feat4)
+
+        # print('detection feature maps:')
+        # print([p.size() for p in [dh1, dh2, dh3, dh4, p_5, p_6]])
+        # exit()
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
         locs, scores = self.detect_convs(dh1, dh2, dh3, dh4, p_5, p_6)
@@ -462,12 +471,12 @@ class ATSSNETNetDetector(nn.Module):
                      'DB7': [4, 4],
                      'DB8': [2, 2]}
 
-        obj_scales = {'DB3': 0.04,
-                      'DB4': 0.08,
-                      'DB5': 0.16,
-                      'DB6': 0.32,
-                      'DB7': 0.56,
-                      'DB8': 0.8}
+        obj_scales = {'DB3': 0.03,
+                      'DB4': 0.07,
+                      'DB5': 0.15,
+                      'DB6': 0.3,
+                      'DB7': 0.55,
+                      'DB8': 0.75}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         # aspect_ratios = {'DB3': [1., 2., 0.5],
@@ -497,7 +506,7 @@ class ATSSNETNetDetector(nn.Module):
                     for ratio in aspect_ratios[fmap]:
                         for fac in scale_factor:
                             temp_prior_boxes.append([cx, cy, obj_scales[fmap] * fac * sqrt(ratio),
-                                                obj_scales[fmap] * fac / sqrt(ratio)])
+                                                     obj_scales[fmap] * fac / sqrt(ratio)])
 
             temp_prior_boxes = torch.FloatTensor(temp_prior_boxes).to(self.device).contiguous()
             temp_prior_boxes.clamp_(0, 1)
@@ -521,13 +530,14 @@ class ATSSNETNetDetectorLoss(nn.Module):
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
-        self.config = config
         self.n_candidates = n_candidates
+
+        self.prior_split_points = [0, 4096, 5120, 5376, 5440, 5456, 5460]
 
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=self.config)
-        # self.FocalLoss = focal_loss
+        # self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.FocalLoss = focal_loss
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
@@ -537,13 +547,26 @@ class ATSSNETNetDetectorLoss(nn.Module):
         :param labels: gt
         :return:
         """
-        n_levels = len(predicted_locs)
-        batch_size = predicted_locs[0].size(0)
+        n_levels = len(self.priors_cxcy)
+        batch_size = predicted_locs.size(0)
         n_priors = [prior.size(0) for prior in self.priors_cxcy]
-        n_classes = predicted_scores[0].size(2)
+        n_classes = predicted_scores.size(2)
 
-        total_predicted_bboxes = sum([loc.size(1) for loc in predicted_locs])
-        assert n_priors == total_predicted_bboxes
+        # split the prediction according to the levels
+        # split_predicted_locs = []
+        # split_predicted_scores = []
+        # for s in range(len(self.priors_cxcy)):
+        #     split_predicted_locs.append(predicted_locs[self.prior_split_points[s]:self.prior_split_points[s + 1], :])
+        #     split_predicted_scores.append(predicted_scores[self.prior_split_points[s]:self.prior_split_points[s + 1], :])
+        #
+        # predicted_locs = split_predicted_locs
+        # predicted_scores = split_predicted_scores
+        #
+        # print('predicted_locs:', [p.size() for p in predicted_locs])
+
+        # total_predicted_bboxes = sum([loc.size(1) for loc in predicted_locs])
+        # print(total_predicted_bboxes, n_priors, n_classes)
+        # assert sum(n_priors) == total_predicted_bboxes
 
         # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         # true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
@@ -558,31 +581,50 @@ class ATSSNETNetDetectorLoss(nn.Module):
         # For each image
         for i in range(batch_size):
             image_bboxes = boxes[i]
-            positive_samples = list()
+            batch_split_predicted_locs = []
+            batch_split_predicted_scores = []
+            for s in range(len(self.priors_cxcy)):
+                batch_split_predicted_locs.append(
+                    predicted_locs[i][self.prior_split_points[s]:self.prior_split_points[s + 1], :])
+                batch_split_predicted_scores.append(
+                    predicted_scores[i][self.prior_split_points[s]:self.prior_split_points[s + 1], :])
+
+            # print('Lenght of priors:', len(self.priors_cxcy))
+            # print('Original shape', predicted_locs[i].size())
+            # print([p.size() for p in batch_split_predicted_locs])
+            # exit()
+            # positive_samples = list()
             # predicted_pos_locs = list()
             positive_samples_idx = list()
             positive_overlaps = list()
             overlap = list()
             for level in range(n_levels):
                 distance = find_distance(xy_to_cxcy(image_bboxes), self.priors_cxcy[level])  # n_bboxes, n_priors
-                _, top_idx_level = torch.topk(distance, self.n_candidates, dim=1)
-                print(distance.size(), top_idx_level.size())
+                _, top_idx_level = torch.topk(-1. * distance, min(self.n_candidates, distance.size(1)), dim=1)
+                # print(distance.size(), top_idx_level.size())
+                # print(top_idx_level)
 
-                level_priors = self.priors_cxcy[level].unsqueeze(0).expand(image_bboxes.size(0),
-                                                                          self.priors_cxcy[level].size(0))
+                # level_priors = self.priors_cxcy[level].unsqueeze(0).expand(image_bboxes.size(0),
+                #                                                            self.priors_cxcy[level].size(0), 4)
+                # print('level_priors: ', level_priors.size())
                 # level_predictions = predicted_locs[i][level].unsqueeze(0).expand(image_bboxes.size(0),
                 #                                             self.priors_cxcy[level].size(0))
-                positive_samples.append(level_priors[top_idx_level])
+                # positive_samples.append(level_priors[top_idx_level])
                 positive_samples_idx.append(top_idx_level)
                 # predicted_pos_locs.append(cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[level]), self.priors_cxcy[level]))
                 overlap_level = find_jaccard_overlap(image_bboxes, self.priors_xy[level])  # overlap for each level
-                positive_overlaps.append(overlap_level[top_idx_level])
+                positive_overlaps.append(torch.gather(overlap_level, dim=1, index=top_idx_level))
                 overlap.append(overlap_level)
 
             positive_overlaps_cat = torch.cat(positive_overlaps, dim=1)  # n_bboxes, n_priors * 6level
+            # print('positive_overlaps_cat shape: ', positive_overlaps_cat.size())
             overlap_mean = torch.mean(positive_overlaps_cat, dim=1)
             overlap_std = torch.std(positive_overlaps_cat, dim=1)
+            # print(overlap_mean, overlap_std)
             iou_threshold = overlap_mean + overlap_std  # n_bboxes, for each object, we have one threshold
+            # print([p.size() for p in positive_overlaps])
+            # print('threshold: ', iou_threshold)
+            # print('\n')
 
             # one prior can only be associated to one gt object
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -592,43 +634,62 @@ class ATSSNETNetDetectorLoss(nn.Module):
             decoded_locs_level = list()
             for level in range(n_levels):
                 positive_priors_per_level = torch.zeros((self.priors_cxcy[level].size(0)),
-                                                        dtype=torch.uint8).to(self.device)
+                                                        dtype=torch.uint8).to(self.device)  # indexing, (n,) shape
                 label_for_each_prior_per_level = torch.zeros((self.priors_cxcy[level].size(0)),
-                                                        dtype=torch.uint8).to(self.device)
+                                                             dtype=torch.long).to(self.device)
                 true_locs_per_level = list()
                 decoded_locs_per_level = list()
-                total_decoded_locs = cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[i][level]), self.priors_cxcy[level])
+                total_decoded_locs = cxcy_to_xy(
+                    gcxgcy_to_cxcy(batch_split_predicted_locs[level], self.priors_cxcy[level]))
+                # print(positive_priors_per_level.size(), label_for_each_prior_per_level.size())
+                # print(level, 'total decoded priors shape: ', total_decoded_locs.size())
                 # overlap_for_each_prior, object_for_each_prior = overlap[level].max(dim=0)
                 # overlap_for_each_object, prior_for_each_object = overlap[level].max(dim=1)
                 for ob in range(image_bboxes.size(0)):
                     for c in range(len(positive_samples_idx[level][ob])):
-
+                        # print(ob, c, 'Range for c: ', len(positive_samples_idx[level][ob]))
                         current_iou = positive_overlaps[level][ob, c]
                         current_bbox = image_bboxes[ob, :]
-                        current_prior = self.priors_cxcy[level][positive_samples_idx[level][ob, c]]
+                        current_prior = self.priors_cxcy[level][positive_samples_idx[level][ob, c], :]
+                        # print(current_iou, iou_threshold[ob], current_bbox, current_prior)
+
                         if current_iou > iou_threshold[ob]:
                             if current_bbox[0] <= current_prior[0] <= current_bbox[2] \
                                     and current_bbox[1] <= current_prior[1] <= current_bbox[3]:
+                                # print('------------------------------------------------------------------')
                                 positive_priors_per_level[positive_samples_idx[level][ob, c]] = 1
                                 # if current_iou == overlap_for_each_prior[positive_samples_idx[level][ob, c]]:
+                                # print(label_for_each_prior_per_level[positive_samples_idx[level][ob, c]])
                                 label_for_each_prior_per_level[positive_samples_idx[level][ob, c]] = labels[i][ob]
-                                temp_true_locs = image_bboxes[level][ob, :].unsqueeze(0)  # (1, 4)
-                                temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][ob, c], :]  # (1, 4)
+                                # print(label_for_each_prior_per_level[positive_samples_idx[level][ob, c]])
+                                # print('Details:')
+                                # print(positive_samples_idx[level][ob, c], labels[i][ob])
+                                # exit()
+
+                                temp_true_locs = image_bboxes[ob, :].unsqueeze(0)  # (1, 4)
+                                temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][ob, c], :].unsqueeze(
+                                    0)  # (1, 4)
                                 true_locs_per_level.append(temp_true_locs)
                                 decoded_locs_per_level.append(temp_decoded_locs)
-
-                true_locs_level.append(torch.cat(true_locs_per_level, dim=0).unsqueeze(0))  # (1, n_l, 4)
-                decoded_locs_level.append(torch.cat(decoded_locs_per_level, dim=0).unsqueeze(0))
+                                # print(temp_true_locs.size(), temp_decoded_locs.size())
+                                # exit()
+                # print(label_for_each_prior_per_level.size(), len(self.priors_cxcy[level]))
+                # assert label_for_each_prior_per_level.size(0) == self.priors_cxcy[level].size(0)
+                if len(true_locs_per_level) > 0:
+                    true_locs_level.append(torch.cat(true_locs_per_level, dim=0).view(-1, 4))  # (1, n_l * 4)
+                    decoded_locs_level.append(torch.cat(decoded_locs_per_level, dim=0).view(-1, 4))
+                    assert torch.cat(decoded_locs_per_level, dim=0).view(-1, 4).size(0) == torch.cat(
+                        true_locs_per_level,
+                        dim=0).view(-1, 4).size(0)
                 true_classes_level.append(label_for_each_prior_per_level)
-                assert len(label_for_each_prior_per_level) == len(predicted_locs[i][level])
-                assert torch.cat(decoded_locs_per_level, dim=0).size(0) == torch.cat(true_locs_per_level, dim=0).size(0)
+                assert len(label_for_each_prior_per_level) == len(batch_split_predicted_locs[level])
 
             # Store
             true_classes.append(torch.cat(true_classes_level, dim=0))  # batch_size, n_priors
             true_locs.append(torch.cat(true_locs_level, dim=0))  # batch_size, n_pos, 4
             # print(odm_locs.size(), decoded_arm_locs.size())
             decoded_locs.append(torch.cat(decoded_locs_level, dim=0))
-            predicted_class_scores.append(torch.cat(predicted_scores[i], dim=0))
+            predicted_class_scores.append(torch.cat(batch_split_predicted_scores, dim=0))
 
         # assemble all samples from batches
         true_classes = torch.cat(true_classes, dim=0)
@@ -637,15 +698,23 @@ class ATSSNETNetDetectorLoss(nn.Module):
         true_locs = torch.cat(true_locs, dim=0)
         decoded_locs = torch.cat(decoded_locs, dim=0)
 
+        # print('Final stored values:')
+        # print(true_locs.size(), true_classes.size())
+        # print(decoded_locs.size(), predicted_scores.size())
+        # print('true locs:', true_locs[:15, :])
+        # print('true classes:', true_classes[4000:])
+        # print(decoded_locs[:15, :])
+        #
+        # exit()
+
         # LOCALIZATION LOSS
         loc_loss = self.regression_loss(decoded_locs, true_locs)
 
         # CONFIDENCE LOSS
-        n_positives = positive_priors.sum()
+        # n_positives = positive_priors.sum().float()
 
         # First, find the loss for all priors
-        conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
+        conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
-

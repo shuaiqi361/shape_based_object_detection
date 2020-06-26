@@ -1,4 +1,5 @@
 import sys
+
 sys.path.append('/home/keyi/Documents/research/code/shape_based_object_detection')
 from torchvision import transforms
 from PIL import Image
@@ -72,7 +73,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
     video_out = cv2.VideoWriter(os.path.join(output_path, folder_name + '.mkv'),
                                 cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
     video_out_mask = cv2.VideoWriter(os.path.join(output_path, folder_name + '_mask.mkv'),
-                                cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
+                                     cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
 
     output_file = os.path.join(output_path, folder_name + '_Det.txt')
     if output_file is not None:
@@ -82,6 +83,8 @@ def detect_folder(folder_path, model_path, meta_data_path):
     frame_list = os.listdir(folder_path)
     n_frames = len(frame_list)
     for frame_id in range(n_frames):
+        if frame_id >= 250:
+            exit()
         frame_name = 'img{:05d}.jpg'.format(frame_id + 1)
         frame_path = os.path.join(folder_path, frame_name)
         print("Processing frame: ", frame_id, frame_path)
@@ -91,13 +94,14 @@ def detect_folder(folder_path, model_path, meta_data_path):
         #                                                         rev_traffic_label_map, label_color_map)
 
         annotated_image, time_pframe, frame_info_list, mask = detect_image(frame, model, 0.25, 0.4, 200,
-                                                                     rev_traffic_label_map, label_color_map)
+                                                                           rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
         video_out.write(annotated_image)
-        aligned_mask = cv2.resize(mask, dsize=(width, height))
+
+        aligned_mask = cv2.resize(np.floor((mask * 255.)).astype(np.uint8), dsize=(width, height))
         # aligned_mask = mask.copy()
-        video_out_mask.write(np.floor((aligned_mask * 255.)).astype(np.uint8))
+        video_out_mask.write(aligned_mask)
         for k in range(len(frame_info_list)):
             f_out.write(str(frame_id + 1) + frame_info_list[k])
 
@@ -184,16 +188,18 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
                     fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.4, color=(255, 255, 255))
 
         per_object_prediction_info = ',{0},{1:.2f},{2:.2f},{3:.2f},{4:.2f},{5:.3f}\n'.format(i + 1,
-                                                                                           box_location[0],
-                                                                                           box_location[1],
-                                                                                           box_location[2] - box_location[0],
-                                                                                           box_location[3] - box_location[1],
-                                                                                           label_score)
+                                                                                             box_location[0],
+                                                                                             box_location[1],
+                                                                                             box_location[2] -
+                                                                                             box_location[0],
+                                                                                             box_location[3] -
+                                                                                             box_location[1],
+                                                                                             label_score)
         frame_info_list.append(per_object_prediction_info)
 
     # when attention mask is available
     # print(attention_map.size())
-    mask = attention_map[0].permute(1, 2, 0).detach().cpu().numpy()
+    mask = np.repeat(attention_map[0].permute(1, 2, 0).detach().cpu().numpy(), 3, axis=2)
 
     return annotated_image, - start + stop, frame_info_list, mask
 

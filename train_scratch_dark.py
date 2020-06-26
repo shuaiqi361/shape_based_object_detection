@@ -125,7 +125,7 @@ def main():
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOCOCO':
         train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
@@ -267,7 +267,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
         # Print status
         if i % config.print_freq == 0:
-            str_print = 'Epoch: [{0:3d}][{1}/{2}]\t' \
+            str_print = 'Epoch: [{0:5d}][{1}/{2}]\t' \
                         'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t' \
                         'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t' \
                         'Loss {loss.val:.4f} ({loss.avg:.4f})'.format(epoch, i, len(train_loader),
@@ -355,8 +355,8 @@ def evaluate(test_loader, model, optimizer, config):
     # # added to resume training
     # model.train()
 
-    str_print = 'EVAL: Mean Average Precision {0:.3f}, ' \
-                'avg speed {1:.2f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
+    str_print = 'EVAL: Mean Average Precision {0:.4f}, ' \
+                'avg speed {1:.3f} Hz, lr {2:.6f}'.format(mAP, 1. / np.mean(detect_speed),
                                                           config.scheduler.get_lr()[1])
     config.logger.info(str_print)
 

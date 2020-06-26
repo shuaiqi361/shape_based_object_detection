@@ -439,8 +439,8 @@ class NETNetDetector(nn.Module):
         nn_feat3 = self.nnfm_3(p_2, p_3, p_4)
         nn_feat4 = self.nnfm_4(p_3, p_4, p_5)
 
-        dh1, dh2 = self.netm_1(nn_feat1, nn_feat3)
-        dh3, dh4 = self.netm_2(nn_feat2, nn_feat4)
+        dh1, dh3 = self.netm_1(nn_feat1, nn_feat3)
+        dh2, dh4 = self.netm_2(nn_feat2, nn_feat4)
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
         locs, scores = self.detect_convs(dh1, dh2, dh3, dh4, p_5, p_6)
