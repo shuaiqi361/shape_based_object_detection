@@ -125,7 +125,7 @@ def main():
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOCOCO':
         train_dataset = BaseModelVOCOCODataset(train_data_folder, split='train', config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
@@ -192,7 +192,7 @@ def main():
         config.scheduler.step()
 
         # Save checkpoint
-        if (epoch > 0 and epoch % val_freq == 0) or epoch == 2:
+        if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
             _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
