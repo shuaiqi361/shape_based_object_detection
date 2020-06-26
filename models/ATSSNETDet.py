@@ -686,10 +686,11 @@ class ATSSNETNetDetectorLoss(nn.Module):
 
             # Store
             true_classes.append(torch.cat(true_classes_level, dim=0))  # batch_size, n_priors
-            true_locs.append(torch.cat(true_locs_level, dim=0))  # batch_size, n_pos, 4
-            # print(odm_locs.size(), decoded_arm_locs.size())
-            decoded_locs.append(torch.cat(decoded_locs_level, dim=0))
             predicted_class_scores.append(torch.cat(batch_split_predicted_scores, dim=0))
+            if len(true_locs_level) > 0:
+                true_locs.append(torch.cat(true_locs_level, dim=0))  # batch_size, n_pos, 4
+                # print(odm_locs.size(), decoded_arm_locs.size())
+                decoded_locs.append(torch.cat(decoded_locs_level, dim=0))
 
         # assemble all samples from batches
         true_classes = torch.cat(true_classes, dim=0)
