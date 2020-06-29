@@ -7,6 +7,7 @@ from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFoc
 from metrics import find_jaccard_overlap
 from operators.iou_utils import find_distance
 from .modules import Mish, ConvGNAct
+import math
 
 
 class Residual(nn.Module):
@@ -403,10 +404,11 @@ class ATSSNETNetDetector(nn.Module):
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
-    def __init__(self, n_classes, config):
+    def __init__(self, n_classes, config, prior=0.01):
         super(ATSSNETNetDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes
+        self.prior = prior
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
                               'DB4': 512,
@@ -428,6 +430,33 @@ class ATSSNETNetDetector(nn.Module):
         self.netm_2 = NeighborErasingTransferModule(256)
 
         self.detect_convs = DetectorConvolutions(self.n_classes, 256)
+
+        # initialization for focal loss
+        self.detect_convs.cl_conv3.weight.data.fill_(0)
+        self.detect_convs.cl_conv3.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv4.weight.data.fill_(0)
+        self.detect_convs.cl_conv4.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv5.weight.data.fill_(0)
+        self.detect_convs.cl_conv5.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv6.weight.data.fill_(0)
+        self.detect_convs.cl_conv6.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv7.weight.data.fill_(0)
+        self.detect_convs.cl_conv7.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv8.weight.data.fill_(0)
+        self.detect_convs.cl_conv8.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+
+        # self.detect_convs.loc_conv3.weight.data.fill_(0)
+        # self.detect_convs.loc_conv3.bias.data.fill_(0)
+        # self.detect_convs.loc_conv4.weight.data.fill_(0)
+        # self.detect_convs.loc_conv4.bias.data.fill_(0)
+        # self.detect_convs.loc_conv5.weight.data.fill_(0)
+        # self.detect_convs.loc_conv5.bias.data.fill_(0)
+        # self.detect_convs.loc_conv6.weight.data.fill_(0)
+        # self.detect_convs.loc_conv6.bias.data.fill_(0)
+        # self.detect_convs.loc_conv7.weight.data.fill_(0)
+        # self.detect_convs.loc_conv7.bias.data.fill_(0)
+        # self.detect_convs.loc_conv8.weight.data.fill_(0)
+        # self.detect_convs.loc_conv8.bias.data.fill_(0)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -712,10 +741,11 @@ class ATSSNETNetDetectorLoss(nn.Module):
         loc_loss = self.regression_loss(decoded_locs, true_locs)
 
         # CONFIDENCE LOSS
-        # n_positives = positive_priors.sum().float()
+        n_positives = positive_priors.sum().float()
 
         # First, find the loss for all priors
         conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
+        # conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
