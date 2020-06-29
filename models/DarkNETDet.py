@@ -460,12 +460,12 @@ class NETNetDetector(nn.Module):
                      'DB7': [4, 4],
                      'DB8': [2, 2]}
 
-        obj_scales = {'DB3': 0.03,
-                      'DB4': 0.07,
-                      'DB5': 0.15,
-                      'DB6': 0.3,
-                      'DB7': 0.5,
-                      'DB8': 0.7}
+        obj_scales = {'DB3': 0.02,
+                      'DB4': 0.04,
+                      'DB5': 0.1,
+                      'DB6': 0.2,
+                      'DB7': 0.4,
+                      'DB8': 0.6}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'DB3': [1., 2., 0.5],
@@ -504,7 +504,7 @@ class NETNetDetectorLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.1):
+    def __init__(self, priors_cxcy, config, threshold=0.55, neg_pos_ratio=3, theta=0.1):
         super(NETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -516,7 +516,8 @@ class NETNetDetectorLoss(nn.Module):
 
         self.theta = theta
 
-        self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        self.regression_loss = SmoothL1Loss()
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
 
@@ -534,9 +535,9 @@ class NETNetDetectorLoss(nn.Module):
 
         assert n_priors == odm_locs.size(1) == odm_scores.size(1)
 
-        decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
         # For each image
@@ -574,18 +575,17 @@ class NETNetDetectorLoss(nn.Module):
             # Encode center-size object coordinates into the form we regressed predicted boxes to
             # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
             #                                       xy_to_cxcy(decoded_arm_locs[i]))
-            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
-            true_locs[i] = boxes[i][object_for_each_prior]
+            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
+            # true_locs[i] = boxes[i][object_for_each_prior]
             # print(odm_locs.size(), decoded_arm_locs.size())
-            decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
+            # decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
 
         # LOCALIZATION LOSS
-        loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
-        # loc_loss = self.odm_loss(odm_locs[positive_priors].view(-1, 4),
-        #                          true_locs_encoded[positive_priors].view(-1, 4))
+        # loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
+        loc_loss = self.regression_loss(odm_locs[positive_priors].view(-1, 4), true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
