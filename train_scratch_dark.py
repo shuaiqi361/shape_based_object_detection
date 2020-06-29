@@ -115,11 +115,11 @@ def main():
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOC':
-        train_dataset = PascalVOCDataset(train_data_folder, split='train', input_size=input_size, config=config)
+        train_dataset = PascalVOCDataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
-        test_dataset = PascalVOCDataset(val_data_folder, split='val', input_size=input_size, config=config)
+        test_dataset = PascalVOCDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
@@ -243,10 +243,11 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         data_time.update(time.time() - start)
         optimizer.zero_grad()
         # Bag of Freebies
-        images, boxes, labels = bof_augment(images, boxes, labels, config=config)
+        # images, boxes, labels = bof_augment(images, boxes, labels, config=config)
 
         # Move to default device
-        images = torch.stack(images, dim=0).to(config.device)
+        # images = torch.stack(images, dim=0).to(config.device)
+        images = images.to(config.device)
         boxes = [b.to(config.device) for b in boxes]
         labels = [l.to(config.device) for l in labels]
 
