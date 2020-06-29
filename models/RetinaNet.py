@@ -5,7 +5,7 @@ import math
 import torch.utils.model_zoo as model_zoo
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, FocalLoss, SigmoidFocalLoss, SmoothL1Loss
+from operators.Loss import IouLoss, FocalLoss, SigmoidFocalLoss, SmoothL1Loss, focal_loss
 from metrics import find_jaccard_overlap
 from .utils import BasicBlock, Bottleneck
 
@@ -19,17 +19,17 @@ model_urls = {
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=160):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
         self.P5_1 = nn.Conv2d(c5_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P5_upsampled = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.P5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P5 elementwise to C4
         self.P4_1 = nn.Conv2d(c4_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P4_upsampled = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P4 elementwise to C3
@@ -77,19 +77,23 @@ class PyramidFeatures(nn.Module):
 
 
 class RegressionModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors, feature_size=160):
+    def __init__(self, num_features_in, num_anchors, feature_size=256):
         super(RegressionModel, self).__init__()
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.gn1 = nn.GroupNorm(32, feature_size)
         self.act1 = nn.ReLU()
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn2 = nn.GroupNorm(32, feature_size)
         self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn3 = nn.GroupNorm(32, feature_size)
         self.act3 = nn.ReLU()
 
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
@@ -107,16 +111,16 @@ class RegressionModel(nn.Module):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = self.act1(out)
+        out = self.act1(self.gn1(out))
 
         out = self.conv2(out)
-        out = self.act2(out)
+        out = self.act2(self.gn2(out))
 
         out = self.conv3(out)
-        out = self.act3(out)
+        out = self.act3(self.gn3(out))
 
         out = self.conv4(out)
-        out = self.act4(out)
+        out = self.act4(self.gn4(out))
 
         out = self.output(out)
 
@@ -134,15 +138,19 @@ class ClassificationModel(nn.Module):
         self.num_anchors = num_anchors
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.gn1 = nn.GroupNorm(32, feature_size)
         self.act1 = nn.ReLU()
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn2 = nn.GroupNorm(32, feature_size)
         self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn3 = nn.GroupNorm(32, feature_size)
         self.act3 = nn.ReLU()
 
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
@@ -161,16 +169,16 @@ class ClassificationModel(nn.Module):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = self.act1(out)
+        out = self.act1(self.gn1(out))
 
         out = self.conv2(out)
-        out = self.act2(out)
+        out = self.act2(self.gn2(out))
 
         out = self.conv3(out)
-        out = self.act3(out)
+        out = self.act3(self.gn3(out))
 
         out = self.conv4(out)
-        out = self.act4(out)
+        out = self.act4(self.gn4(out))
 
         out = self.output(out)
         # out = self.output_act(out)
@@ -214,8 +222,8 @@ class RetinaNet(nn.Module):
         self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(1, num_anchors=6)
-        self.classificationModel = ClassificationModel(128, num_anchors=6, num_classes=n_classes)
+        self.regressionModel = RegressionModel(1, num_anchors=9)
+        self.classificationModel = ClassificationModel(128, num_anchors=9, num_classes=n_classes)
 
         # parameters initialization
         # def initialize_layer(layer):
@@ -251,7 +259,7 @@ class RetinaNet(nn.Module):
         # self.regressionModel.output.bias.data.fill_(0)
 
         self.classificationModel.output.weight.data.fill_(0)
-        self.classificationModel.output.bias.data.fill_(-math.log((1.0 -self. prior) / self.prior))
+        self.classificationModel.output.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
 
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
@@ -274,7 +282,7 @@ class RetinaNet(nn.Module):
                       'c5': 0.16,
                       'c6': 0.32,
                       'c7': 0.64}
-        scale_factor = [2. ** 0, 2. ** (1 / 3.)]
+        scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'c3': [1., 2., 0.5],
                          'c4': [1., 2., 0.5],
                          'c5': [1., 2., 0.5],
@@ -367,14 +375,13 @@ class RetinaFocalLoss(nn.Module):
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
-        self.config = config
 
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss()
-        # self.Focal_loss = focal_loss
-        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.Focal_loss = focal_loss
+        # self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def increase_threshold(self, increment=0.1):
         if self.threshold >= 0.7:
@@ -437,7 +444,7 @@ class RetinaFocalLoss(nn.Module):
             # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
             # label_for_each_prior[overlap_for_each_prior < self.threshold - 0.1] = 0
             label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
-            label_for_each_prior_neg_used[overlap_for_each_prior < (self.threshold - 0.1)] = -1
+            label_for_each_prior_neg_used[overlap_for_each_prior < self.threshold - 0.1] = -1
 
             # Store
             true_classes[i] = label_for_each_prior
@@ -469,7 +476,7 @@ class RetinaFocalLoss(nn.Module):
                                       true_classes[negative_priors]], dim=0)
 
             conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                        target_class.view(-1)) / n_positives.sum().float()
+                                        target_class.view(-1), device=self.device) / len(target_class)
             # conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
             #                             target_class.view(-1), device=self.config.device) / n_positives.sum().float()
         else:
