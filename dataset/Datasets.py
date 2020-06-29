@@ -411,7 +411,10 @@ class BaseModelVOCOCODataset(Dataset):
         objects = self.objects[i]
         boxes = torch.FloatTensor(objects['bbox'])  # (n_objects, 4)
         labels = torch.LongTensor(objects['labels'])  # (n_objects)
-        ids = objects['image_id']
+        if 'image_id' in objects.keys():
+            ids = objects['image_id']
+        else:
+            ids = -1
         difficulties = torch.LongTensor(objects['difficulties'])
 
         # Apply transformations

@@ -460,12 +460,12 @@ class NETNetDetector(nn.Module):
                      'DB7': [4, 4],
                      'DB8': [2, 2]}
 
-        obj_scales = {'DB3': 0.02,
-                      'DB4': 0.04,
-                      'DB5': 0.1,
-                      'DB6': 0.2,
-                      'DB7': 0.4,
-                      'DB8': 0.6}
+        obj_scales = {'DB3': 0.04,
+                      'DB4': 0.08,
+                      'DB5': 0.16,
+                      'DB6': 0.32,
+                      'DB7': 0.48,
+                      'DB8': 0.64}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'DB3': [1., 2., 0.5],
@@ -504,7 +504,7 @@ class NETNetDetectorLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.55, neg_pos_ratio=3, theta=0.1):
+    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.1):
         super(NETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
