@@ -222,8 +222,8 @@ class RetinaNet(nn.Module):
         self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(1, num_anchors=9)
-        self.classificationModel = ClassificationModel(128, num_anchors=9, num_classes=n_classes)
+        self.regressionModel = RegressionModel(256, num_anchors=9)
+        self.classificationModel = ClassificationModel(256, num_anchors=9, num_classes=n_classes)
 
         # parameters initialization
         # def initialize_layer(layer):
@@ -375,6 +375,7 @@ class RetinaFocalLoss(nn.Module):
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes
+        self.config = config
 
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
@@ -476,7 +477,7 @@ class RetinaFocalLoss(nn.Module):
                                       true_classes[negative_priors]], dim=0)
 
             conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
-                                        target_class.view(-1), device=self.device) / len(target_class)
+                                        target_class.view(-1), device=self.device) / n_positives.sum().float()
             # conf_loss = self.Focal_loss(predicted_objects.view(-1, n_classes),
             #                             target_class.view(-1), device=self.config.device) / n_positives.sum().float()
         else:
