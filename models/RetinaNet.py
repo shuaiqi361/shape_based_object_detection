@@ -19,7 +19,7 @@ model_urls = {
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=192):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=160):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
@@ -77,24 +77,24 @@ class PyramidFeatures(nn.Module):
 
 
 class RegressionModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors, feature_size=256):
+    def __init__(self, num_features_in, num_anchors, feature_size=160):
         super(RegressionModel, self).__init__()
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
-        self.gn1 = nn.GroupNorm(32, feature_size)
+        # self.gn1 = nn.GroupNorm(32, feature_size)
         self.act1 = nn.ReLU()
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn2 = nn.GroupNorm(32, feature_size)
+        # self.gn2 = nn.GroupNorm(32, feature_size)
         self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn3 = nn.GroupNorm(32, feature_size)
+        # self.gn3 = nn.GroupNorm(32, feature_size)
         self.act3 = nn.ReLU()
 
-        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(32, feature_size)
-        self.act4 = nn.ReLU()
+        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        # # self.gn4 = nn.GroupNorm(32, feature_size)
+        # self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
 
@@ -111,16 +111,16 @@ class RegressionModel(nn.Module):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = self.act1(self.gn1(out))
+        out = self.act1(out)
 
         out = self.conv2(out)
-        out = self.act2(self.gn2(out))
+        out = self.act2(out)
 
         out = self.conv3(out)
-        out = self.act3(self.gn3(out))
+        out = self.act3(out)
 
-        out = self.conv4(out)
-        out = self.act4(self.gn4(out))
+        # out = self.conv4(out)
+        # out = self.act4(out)
 
         out = self.output(out)
 
@@ -131,27 +131,27 @@ class RegressionModel(nn.Module):
 
 
 class ClassificationModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors, num_classes, feature_size=256):
+    def __init__(self, num_features_in, num_anchors, num_classes, feature_size=192):
         super(ClassificationModel, self).__init__()
 
         self.num_classes = num_classes
         self.num_anchors = num_anchors
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
-        self.gn1 = nn.GroupNorm(32, feature_size)
+        # self.gn1 = nn.GroupNorm(32, feature_size)
         self.act1 = nn.ReLU()
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn2 = nn.GroupNorm(32, feature_size)
+        # self.gn2 = nn.GroupNorm(32, feature_size)
         self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn3 = nn.GroupNorm(32, feature_size)
+        # self.gn3 = nn.GroupNorm(32, feature_size)
         self.act3 = nn.ReLU()
 
-        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(32, feature_size)
-        self.act4 = nn.ReLU()
+        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        # self.gn4 = nn.GroupNorm(32, feature_size)
+        # self.act4 = nn.ReLU()
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
         # self.output_act = nn.Sigmoid()
@@ -169,16 +169,16 @@ class ClassificationModel(nn.Module):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = self.act1(self.gn1(out))
+        out = self.act1(out)
 
         out = self.conv2(out)
-        out = self.act2(self.gn2(out))
+        out = self.act2(out)
 
         out = self.conv3(out)
-        out = self.act3(self.gn3(out))
+        out = self.act3(out)
 
-        out = self.conv4(out)
-        out = self.act4(self.gn4(out))
+        # out = self.conv4(out)
+        # out = self.act4(out)
 
         out = self.output(out)
         # out = self.output_act(out)
@@ -222,8 +222,8 @@ class RetinaNet(nn.Module):
         self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(192, num_anchors=6)
-        self.classificationModel = ClassificationModel(192, num_anchors=6, num_classes=n_classes)
+        self.regressionModel = RegressionModel(160, num_anchors=6)
+        self.classificationModel = ClassificationModel(160, num_anchors=6, num_classes=n_classes)
 
         # parameters initialization
         # def initialize_layer(layer):
@@ -264,7 +264,7 @@ class RetinaNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-        # self.freeze_bn()
+        self.freeze_bn()
 
     def create_anchors(self):
         """
