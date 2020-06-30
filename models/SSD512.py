@@ -486,7 +486,7 @@ class MultiBoxLoss512(nn.Module):
         self.n_classes = config.n_classes
         self.config = config
 
-        self.smooth_l1 = SmoothL1Loss  # nn.L1Loss()
+        self.smooth_l1 = SmoothL1Loss()  # nn.L1Loss()
         self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss(class_num=self.n_classes, size_average=True)

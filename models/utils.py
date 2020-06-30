@@ -103,8 +103,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     :return: detections (boxes, labels, and scores), lists of length batch_size
     """
     # print('In detect_objects: ')
-    if isinstance(priors_cxcy, list):
-        priors_cxcy = torch.cat(priors_cxcy, dim=0)
+    # if isinstance(priors_cxcy, list):
+    #     priors_cxcy = torch.cat(priors_cxcy, dim=0)
     box_type = config.model['box_type']
     device = config.device
     focal_type = config['focal_type']
@@ -329,6 +329,3 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
         all_images_scores.append(image_scores)
 
     return all_images_boxes, all_images_labels, all_images_scores
-
-
-
