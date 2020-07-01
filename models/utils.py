@@ -103,8 +103,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     :return: detections (boxes, labels, and scores), lists of length batch_size
     """
     # print('In detect_objects: ')
-    # if isinstance(priors_cxcy, list):
-    #     priors_cxcy = torch.cat(priors_cxcy, dim=0)
+    if isinstance(priors_cxcy, list):
+        priors_cxcy = torch.cat(priors_cxcy, dim=0)
     box_type = config.model['box_type']
     device = config.device
     focal_type = config['focal_type']
@@ -172,8 +172,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
             class_decoded_locs = torch.index_select(decoded_locs_all, dim=0,
                                                     index=torch.nonzero(score_above_min_score).squeeze(dim=1))
 
-            # anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
-            anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
+            anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
+            # anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
 
             # Store only unsuppressed boxes for this class
             # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),
