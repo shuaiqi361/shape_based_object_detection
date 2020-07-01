@@ -353,9 +353,9 @@ class ATSSSSD512(nn.Module):
     The SSD300 network - encapsulates the base VGG network, auxiliary, and prediction convolutions.
     """
 
-    def __init__(self, n_classes, device):
+    def __init__(self, n_classes, config):
         super(ATSSSSD512, self).__init__()
-        self.device = device
+        self.device = config.device
         self.n_classes = n_classes
         self.base = VGGBase()
         # self.disable_parameter_requires_grad(self.base)
@@ -414,13 +414,13 @@ class ATSSSSD512(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'conv4_3': 64,
-                     'conv7': 32,
-                     'conv8_2': 16,
-                     'conv9_2': 8,
-                     'conv10_2': 4,
-                     'conv11_2': 2,
-                     'conv12_2': 1}
+        fmap_dims = {'conv4_3': [64, 64],
+                     'conv7': [32, 32],
+                     'conv8_2': [16, 16],
+                     'conv9_2': [8, 8],
+                     'conv10_2': [4, 4],
+                     'conv11_2': [2, 2],
+                     'conv12_2': [1, 1]}
 
         obj_scales = {'conv4_3': 0.04,
                       'conv7': 0.08,
