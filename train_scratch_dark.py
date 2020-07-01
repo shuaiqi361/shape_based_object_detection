@@ -291,7 +291,7 @@ def evaluate(test_loader, model, optimizer, config):
 
     # Make sure it's in eval mode
     # torch.cuda.empty_cache()
-    # model.eval()
+    model.eval()
 
     pp = pprint.PrettyPrinter()
 

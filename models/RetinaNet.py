@@ -222,8 +222,8 @@ class RetinaNet(nn.Module):
         self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(160, num_anchors=6)
-        self.classificationModel = ClassificationModel(160, num_anchors=6, num_classes=n_classes)
+        self.regressionModel = RegressionModel(160, num_anchors=3)
+        self.classificationModel = ClassificationModel(160, num_anchors=3, num_classes=n_classes)
 
         # parameters initialization
         # def initialize_layer(layer):
@@ -282,7 +282,7 @@ class RetinaNet(nn.Module):
                       'c5': 0.16,
                       'c6': 0.32,
                       'c7': 0.64}
-        scale_factor = [1., 1.5]
+        scale_factor = [1.]
         aspect_ratios = {'c3': [1., 2., 0.5],
                          'c4': [1., 2., 0.5],
                          'c5': [1., 2., 0.5],
