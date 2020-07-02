@@ -206,7 +206,7 @@ class RetinaNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.prior = prior
-        self.n_classes = n_classes
+        self.n_classes = n_classes - 1
         self.device = device
 
         if block == BasicBlock:

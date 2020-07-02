@@ -50,12 +50,12 @@ class SigmoidFocalLoss(nn.Module):
         # n_class = out.shape[1] - 1  # excluding background class when using Sigmoid Focal Loss, 80 for COCO
         n_class = out.shape[1]  # excluding background class when using Sigmoid Focal Loss, 80 for COCO
         class_ids = torch.arange(
-            0, n_class, dtype=target.dtype, device=target.device
+            1, n_class + 1, dtype=target.dtype, device=target.device
         ).unsqueeze(0)
         # print(class_ids.size())
 
-        t = (target - 1).unsqueeze(1)  # background class has label -1
-        p = torch.sigmoid(out).clamp(min=1e-6, max=1-1e-6)
+        t = (target).unsqueeze(1)  # background class has label -1
+        p = torch.sigmoid(out)
         # p = torch.sigmoid(out[:, 1:]).clamp(min=1e-5, max=1-1e-5)  # excluding the background class
 
         gamma = self.gamma
@@ -69,10 +69,8 @@ class SigmoidFocalLoss(nn.Module):
         #         -(t == class_ids).float() * alpha * term1
         #         - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
         # )
-        loss = (
-                -(t == class_ids).float() * alpha * term1
-                - ((t != class_ids) & (t >= 0)).float() * (1 - alpha) * term2
-        )
+        loss = -(t == class_ids).float() * alpha * term1 - ((t != class_ids) * (t >= 0)).float() * (1 - alpha) * term2
+        
         # y = (t == class_ids).float()
         #
         # loss = -y * alpha * term1 - (1 - y) * (1 - alpha) * term2
