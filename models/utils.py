@@ -103,8 +103,8 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
     :return: detections (boxes, labels, and scores), lists of length batch_size
     """
     # print('In detect_objects: ')
-    if isinstance(priors_cxcy, list):
-        priors_cxcy = torch.cat(priors_cxcy, dim=0)
+    # if isinstance(priors_cxcy, list):
+    #     priors_cxcy = torch.cat(priors_cxcy, dim=0)
     box_type = config.model['box_type']
     device = config.device
     focal_type = config['focal_type']
@@ -276,7 +276,7 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
             decoded_locs_all = decoded_locs
 
         # Check for each class
-        for c in range(1, n_classes):
+        for c in range(n_classes):  # n_classes = 20 for VOC and 80 for COCO
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
             class_scores = class_scores_all[:, c]
             score_above_min_score = (class_scores > min_score).long()  # for indexing
@@ -302,7 +302,7 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
             # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),
             #       torch.LongTensor(anchor_nms_idx.size(0) * [c]).size(), class_scores[anchor_nms_idx].size())
             image_boxes.append(class_decoded_locs[anchor_nms_idx, :])
-            image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c]).to(device))
+            image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c + 1]).to(device))
             image_scores.append(class_scores[anchor_nms_idx])
         # If no object in any class is found, store a placeholder for 'background'
         if len(image_boxes) == 0:

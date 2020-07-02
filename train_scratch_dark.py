@@ -17,7 +17,7 @@ from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
 from utils import create_logger, save_checkpoint
-from models.utils import detect
+from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
 from dataset.transforms import bof_augment
 
@@ -318,21 +318,39 @@ def evaluate(test_loader, model, optimizer, config):
             predicted_locs, predicted_scores = model(images)
 
             if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO':
-                det_boxes_batch, det_labels_batch, det_scores_batch = \
-                    detect(predicted_locs,
-                           predicted_scores,
-                           min_score=config.nms['min_score'],
-                           max_overlap=config.nms['max_overlap'],
-                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                           config=config)
+                if config['focal_type'].lower() == 'sigmoid':
+                    det_boxes_batch, det_labels_batch, det_scores_batch = \
+                        detect_focal(predicted_locs,
+                                     predicted_scores,
+                                     min_score=config.nms['min_score'],
+                                     max_overlap=config.nms['max_overlap'],
+                                     top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                                     config=config)
+                else:
+                    det_boxes_batch, det_labels_batch, det_scores_batch = \
+                        detect(predicted_locs,
+                               predicted_scores,
+                               min_score=config.nms['min_score'],
+                               max_overlap=config.nms['max_overlap'],
+                               top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                               config=config)
             elif config.data_name.upper() == 'VOC':
-                det_boxes_batch, det_labels_batch, det_scores_batch = \
-                    detect(predicted_locs,
-                           predicted_scores,
-                           min_score=config.nms['min_score'],
-                           max_overlap=config.nms['max_overlap'],
-                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                           config=config)
+                if config['focal_type'].lower() == 'sigmoid':
+                    det_boxes_batch, det_labels_batch, det_scores_batch = \
+                        detect_focal(predicted_locs,
+                                     predicted_scores,
+                                     min_score=config.nms['min_score'],
+                                     max_overlap=config.nms['max_overlap'],
+                                     top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                                     config=config)
+                else:
+                    det_boxes_batch, det_labels_batch, det_scores_batch = \
+                        detect(predicted_locs,
+                               predicted_scores,
+                               min_score=config.nms['min_score'],
+                               max_overlap=config.nms['max_overlap'],
+                               top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                               config=config)
             else:
                 raise NotImplementedError
 
