@@ -30,7 +30,7 @@ class VGGBase(nn.Module):
         self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
-        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
 
         self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
         self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
@@ -147,11 +147,11 @@ class AuxiliaryConvolutions(nn.Module):
         self.conv10_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
         self.conv10_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
 
-        self.conv11_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
-
-        self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1)
-        self.conv12_2 = nn.Conv2d(128, 256, kernel_size=2)
+        # self.conv11_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
+        # self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
+        #
+        # self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1)
+        # self.conv12_2 = nn.Conv2d(128, 256, kernel_size=2)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -185,17 +185,17 @@ class AuxiliaryConvolutions(nn.Module):
         out = F.relu(self.conv10_2(out))  # (N, 256, 3, 3)
         conv10_2_feats = out  # (N, 256, 3, 3)
 
-        out = F.relu(self.conv11_1(out))  # (N, 128, 2, 2)
-        out = F.relu(self.conv11_2(out))
-        conv11_2_feats = out  # (N, 256, 1, 1)
-
-        out = F.relu(self.conv12_1(out))
-        out = F.relu(self.conv12_2(out))
-        conv12_2_feats = out  # (N, 256, 1, 1)
+        # out = F.relu(self.conv11_1(out))  # (N, 128, 2, 2)
+        # out = F.relu(self.conv11_2(out))
+        # conv11_2_feats = out  # (N, 256, 1, 1)
+        #
+        # out = F.relu(self.conv12_1(out))
+        # out = F.relu(self.conv12_2(out))
+        # conv12_2_feats = out  # (N, 256, 1, 1)
 
         # Higher-level feature maps
         # print(conv8_2_feats.size(), conv9_2_feats.size(), conv10_2_feats.size(), conv11_2_feats.size())
-        return conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats, conv12_2_feats
+        return conv8_2_feats, conv9_2_feats, conv10_2_feats  # , conv11_2_feats, conv12_2_feats
 
 
 class PredictionConvolutions(nn.Module):
@@ -233,8 +233,8 @@ class PredictionConvolutions(nn.Module):
         self.loc_conv8_2 = nn.Conv2d(512, n_boxes['conv8_2'] * 4, kernel_size=3, padding=1)
         self.loc_conv9_2 = nn.Conv2d(256, n_boxes['conv9_2'] * 4, kernel_size=3, padding=1)
         self.loc_conv10_2 = nn.Conv2d(256, n_boxes['conv10_2'] * 4, kernel_size=3, padding=1)
-        self.loc_conv11_2 = nn.Conv2d(256, n_boxes['conv11_2'] * 4, kernel_size=3, padding=1)
-        self.loc_conv12_2 = nn.Conv2d(256, n_boxes['conv12_2'] * 4, kernel_size=3, padding=1)
+        # self.loc_conv11_2 = nn.Conv2d(256, n_boxes['conv11_2'] * 4, kernel_size=3, padding=1)
+        # self.loc_conv12_2 = nn.Conv2d(256, n_boxes['conv12_2'] * 4, kernel_size=3, padding=1)
 
         # Class prediction convolutions (predict classes in localization boxes)
         self.cl_conv4_3 = nn.Conv2d(512, n_boxes['conv4_3'] * n_classes, kernel_size=3, padding=1)
@@ -242,8 +242,8 @@ class PredictionConvolutions(nn.Module):
         self.cl_conv8_2 = nn.Conv2d(512, n_boxes['conv8_2'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv9_2 = nn.Conv2d(256, n_boxes['conv9_2'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv10_2 = nn.Conv2d(256, n_boxes['conv10_2'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv11_2 = nn.Conv2d(256, n_boxes['conv11_2'] * n_classes, kernel_size=3, padding=1)
-        self.cl_conv12_2 = nn.Conv2d(256, n_boxes['conv12_2'] * n_classes, kernel_size=3, padding=1)
+        # self.cl_conv11_2 = nn.Conv2d(256, n_boxes['conv11_2'] * n_classes, kernel_size=3, padding=1)
+        # self.cl_conv12_2 = nn.Conv2d(256, n_boxes['conv12_2'] * n_classes, kernel_size=3, padding=1)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -259,7 +259,7 @@ class PredictionConvolutions(nn.Module):
                     nn.init.constant_(c.bias, val=0)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats,
-                conv10_2_feats, conv11_2_feats, conv12_2_feats):
+                conv10_2_feats):
         """
         Forward propagation.
 
@@ -298,13 +298,13 @@ class PredictionConvolutions(nn.Module):
         l_conv10_2 = l_conv10_2.permute(0, 2, 3, 1).contiguous()  # (N, 3, 3, 16)
         l_conv10_2 = l_conv10_2.view(batch_size, -1, 4)  # (N, 36, 4)
 
-        l_conv11_2 = self.loc_conv11_2(conv11_2_feats)  # (N, 16, 1, 1)
-        l_conv11_2 = l_conv11_2.permute(0, 2, 3, 1).contiguous()  # (N, 1, 1, 16)
-        l_conv11_2 = l_conv11_2.view(batch_size, -1, 4)  # (N, 4, 4)
-
-        l_conv12_2 = self.loc_conv12_2(conv12_2_feats)  # (N, 16, 1, 1)
-        l_conv12_2 = l_conv12_2.permute(0, 2, 3, 1).contiguous()  # (N, 1, 1, 16)
-        l_conv12_2 = l_conv12_2.view(batch_size, -1, 4)  # (N, 4, 4)
+        # l_conv11_2 = self.loc_conv11_2(conv11_2_feats)  # (N, 16, 1, 1)
+        # l_conv11_2 = l_conv11_2.permute(0, 2, 3, 1).contiguous()  # (N, 1, 1, 16)
+        # l_conv11_2 = l_conv11_2.view(batch_size, -1, 4)  # (N, 4, 4)
+        #
+        # l_conv12_2 = self.loc_conv12_2(conv12_2_feats)  # (N, 16, 1, 1)
+        # l_conv12_2 = l_conv12_2.permute(0, 2, 3, 1).contiguous()  # (N, 1, 1, 16)
+        # l_conv12_2 = l_conv12_2.view(batch_size, -1, 4)  # (N, 4, 4)
 
         # # Predict classes in localization boxes
         c_conv4_3 = self.cl_conv4_3(conv4_3_feats)
@@ -330,19 +330,19 @@ class PredictionConvolutions(nn.Module):
         c_conv10_2 = c_conv10_2.permute(0, 2, 3, 1).contiguous()
         c_conv10_2 = c_conv10_2.view(batch_size, -1, self.n_classes)
 
-        c_conv11_2 = self.cl_conv11_2(conv11_2_feats)
-        c_conv11_2 = c_conv11_2.permute(0, 2, 3, 1).contiguous()
-        c_conv11_2 = c_conv11_2.view(batch_size, -1, self.n_classes)
-
-        c_conv12_2 = self.cl_conv12_2(conv12_2_feats)
-        c_conv12_2 = c_conv12_2.permute(0, 2, 3, 1).contiguous()
-        c_conv12_2 = c_conv12_2.view(batch_size, -1, self.n_classes)
+        # c_conv11_2 = self.cl_conv11_2(conv11_2_feats)
+        # c_conv11_2 = c_conv11_2.permute(0, 2, 3, 1).contiguous()
+        # c_conv11_2 = c_conv11_2.view(batch_size, -1, self.n_classes)
+        #
+        # c_conv12_2 = self.cl_conv12_2(conv12_2_feats)
+        # c_conv12_2 = c_conv12_2.permute(0, 2, 3, 1).contiguous()
+        # c_conv12_2 = c_conv12_2.view(batch_size, -1, self.n_classes)
 
         # A total of 22536 boxes
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2, l_conv11_2, l_conv12_2],
+        locs = torch.cat([l_conv4_3, l_conv7, l_conv8_2, l_conv9_2, l_conv10_2],
                          dim=1).contiguous()
-        classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2, c_conv10_2, c_conv11_2, c_conv12_2],
+        classes_scores = torch.cat([c_conv4_3, c_conv7, c_conv8_2, c_conv9_2, c_conv10_2],
                                    dim=1).contiguous()
 
         return locs, classes_scores
@@ -390,13 +390,12 @@ class ATSSSSD512(nn.Module):
         conv4_3_feats = conv4_3_feats * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
 
         # Run auxiliary convolutions (higher level feature map generators)
-        conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats, conv12_2_feats = \
+        conv8_2_feats, conv9_2_feats, conv10_2_feats = \
             self.aux_convs(conv7_feats)  # (N, 512, 8, 8),  (N, 256, 4, 4), (N, 256, 3, 3), (N, 256, 1, 1)
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
         locs, classes_scores = self.pred_convs(conv4_3_feats, conv7_feats, conv8_2_feats,
-                                               conv9_2_feats, conv10_2_feats,
-                                               conv11_2_feats, conv12_2_feats)  # (N, 22536, 4), (N, 22536, n_classes)
+                                               conv9_2_feats, conv10_2_feats)  # (N, 22536, 4), (N, 22536, n_classes)
 
         # print(conv4_3_feats.size(), conv8_2_feats.size(), conv10_2_feats.size(), conv12_2_feats.size())
         return locs, classes_scores
@@ -414,29 +413,23 @@ class ATSSSSD512(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'conv4_3': [64, 64],
-                     'conv7': [32, 32],
-                     'conv8_2': [16, 16],
-                     'conv9_2': [8, 8],
-                     'conv10_2': [4, 4],
-                     'conv11_2': [2, 2],
-                     'conv12_2': [1, 1]}
+        fmap_dims = {'conv4_3': [38, 38],
+                     'conv7': [19, 19],
+                     'conv8_2': [10, 10],
+                     'conv9_2': [5, 5],
+                     'conv10_2': [3, 3]}
 
-        obj_scales = {'conv4_3': 0.04,
-                      'conv7': 0.08,
-                      'conv8_2': 0.16,
-                      'conv9_2': 0.32,
-                      'conv10_2': 0.48,
-                      'conv11_2': 0.64,
-                      'conv12_2': 0.8}
+        obj_scales = {'conv4_3': 0.08,
+                      'conv7': 0.16,
+                      'conv8_2': 0.32,
+                      'conv9_2': 0.48,
+                      'conv10_2': 0.64}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
                          'conv8_2': [1.],
                          'conv9_2': [1.],
-                         'conv10_2': [1.],
-                         'conv11_2': [1.],
-                         'conv12_2': [1.]}
+                         'conv10_2': [1.]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -478,11 +471,11 @@ class ATSSSSD512Loss(nn.Module):
         self.n_classes = config.n_classes
         self.n_candidates = n_candidates
 
-        self.prior_split_points = [0, 4096, 5120, 5376, 5440, 5456, 5460, 5461]
+        self.prior_split_points = [0, 1444, 1805, 1905, 1930, 1939]
         self.regression_loss = SmoothL1Loss(reduction='mean')
         # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.FocalLoss = SigmoidFocalLoss(gamma=1.5, alpha=0.25, config=config)
         # self.FocalLoss = focal_loss
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
