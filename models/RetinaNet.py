@@ -374,7 +374,7 @@ class RetinaFocalLoss(nn.Module):
         self.neg_pos_ratio = neg_pos_ratio
         self.alpha = config.reg_weights
         self.device = config.device
-        self.n_classes = config.n_classes
+        self.n_classes = config.n_classes - 1
         self.config = config
 
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
