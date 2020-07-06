@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from math import sqrt
 import torchvision
 from dataset.transforms import *
-from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss
+from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss
 from metrics import find_jaccard_overlap
 from .modules import Mish, ConvGNAct
 
@@ -397,7 +397,7 @@ class NETNetDetector(nn.Module):
     def __init__(self, n_classes, config):
         super(NETNetDetector, self).__init__()
         self.device = config.device
-        self.n_classes = n_classes
+        self.n_classes = n_classes - 1
         self.theta = 0.01
 
         self.feat_channels = {'DB2': 256,
@@ -460,12 +460,12 @@ class NETNetDetector(nn.Module):
                      'DB7': [4, 4],
                      'DB8': [2, 2]}
 
-        obj_scales = {'DB3': 0.04,
-                      'DB4': 0.08,
-                      'DB5': 0.16,
-                      'DB6': 0.32,
-                      'DB7': 0.48,
-                      'DB8': 0.64}
+        obj_scales = {'DB3': 0.035,
+                      'DB4': 0.07,
+                      'DB5': 0.14,
+                      'DB6': 0.28,
+                      'DB7': 0.56,
+                      'DB8': 0.84}
         scale_factor = [1.]
         # scale_factor = [2. ** 0, 2. ** (1 / 3.), 2. ** (2 / 3.)]
         aspect_ratios = {'DB3': [1., 2., 0.5],
@@ -504,7 +504,7 @@ class NETNetDetectorLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3, theta=0.1):
+    def __init__(self, priors_cxcy, config, threshold=0.7, neg_pos_ratio=3, theta=0.1):
         super(NETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
@@ -512,13 +512,14 @@ class NETNetDetectorLoss(nn.Module):
         self.neg_pos_ratio = neg_pos_ratio
         self.alpha = config.reg_weights
         self.device = config.device
-        self.n_classes = config.n_classes
+        self.n_classes = config.n_classes - 1
 
         self.theta = theta
 
-        # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.regression_loss = SmoothL1Loss()
-        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        # self.regression_loss = SmoothL1Loss()
+        # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        self.classification_loss = SigmoidFocalLoss()
         # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
 
     def forward(self, odm_locs, odm_scores, boxes, labels):
