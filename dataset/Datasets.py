@@ -552,8 +552,12 @@ class COCOMultiScaleDataset(Dataset):
 
         if max_height < max_width:
             scale = self.min_side / max_height
+            if scale * max_width > self.max_side:
+                scale = self.max_side / max_width
         else:
             scale = self.min_side / max_width
+            if scale * max_height > self.max_side:
+                scale = self.max_side / max_height
 
         new_width = int(round(max_width * scale))
         pad_width = 32 - new_width % 32

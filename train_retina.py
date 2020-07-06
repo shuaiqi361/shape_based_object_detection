@@ -106,7 +106,7 @@ def main():
         train_dataset = COCOMultiScaleDataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=True, drop_last=False)
+                                                   pin_memory=False, drop_last=False)
         test_dataset = COCOMultiScaleDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,

@@ -84,18 +84,18 @@ class RegressionModel(nn.Module):
         super(RegressionModel, self).__init__()
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
-        self.gn1 = nn.GroupNorm(16, feature_size)
+        self.gn1 = nn.GroupNorm(32, feature_size)
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn2 = nn.GroupNorm(16, feature_size)
+        self.gn2 = nn.GroupNorm(32, feature_size)
         # self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn3 = nn.GroupNorm(16, feature_size)
+        self.gn3 = nn.GroupNorm(32, feature_size)
         # self.act3 = nn.ReLU()
 
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(16, feature_size)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
@@ -140,17 +140,17 @@ class ClassificationModel(nn.Module):
         self.num_anchors = num_anchors
 
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
-        self.gn1 = nn.GroupNorm(16, feature_size)
+        self.gn1 = nn.GroupNorm(32, feature_size)
 
         self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn2 = nn.GroupNorm(16, feature_size)
+        self.gn2 = nn.GroupNorm(32, feature_size)
         # self.act2 = nn.ReLU()
 
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn3 = nn.GroupNorm(16, feature_size)
+        self.gn3 = nn.GroupNorm(32, feature_size)
 
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(16, feature_size)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
