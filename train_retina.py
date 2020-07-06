@@ -15,7 +15,7 @@ import json
 
 from scheduler import WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset, COCOMultiScaleDataset
+from dataset.Datasets import PascalVOCDataset, BaseModelVOCOCODataset, COCOMultiScaleDataset
 from utils import create_logger, save_checkpoint
 from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
@@ -152,7 +152,7 @@ def main():
 
     cudnn.benchmark = True
     model = model.to(config.device)
-    criterion = criterion(priors_cxcy=model.priors_cxcy, config=config).to(config.device)
+    criterion = criterion(config=config).to(config.device)
 
     # create logger to track training results
     now = datetime.now()
@@ -177,7 +177,7 @@ def main():
     for epoch in range(start_epoch, epochs):
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        evaluate(test_loader, model, criterion, config=config)
+        # evaluate(test_loader, model, criterion, config=config)
 
         train(train_loader=train_loader,
               model=model,

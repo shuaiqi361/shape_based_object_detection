@@ -20,7 +20,7 @@ model_urls = {
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=192):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
@@ -56,11 +56,13 @@ class PyramidFeatures(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, c3, c4, c5):
+        # print(c3.size(), c4.size(), c5.size())
         P5_x = self.P5_1(c5)
         P5_upsampled_x = self.P5_upsampled(P5_x)
         P5_x = self.P5_2(P5_x)
 
         P4_x = self.P4_1(c4)
+        # print(P5_upsampled_x.size(), P4_x.size())
         P4_x = P5_upsampled_x + P4_x
         P4_upsampled_x = self.P4_upsampled(P4_x)
         P4_x = self.P4_2(P4_x)
@@ -220,8 +222,8 @@ class RetinaATSSNet(nn.Module):
         # self.priors_cxcy = self.anchors_cxcy
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(256, num_anchors=1)
-        self.classificationModel = ClassificationModel(256, num_anchors=1, num_classes=n_classes)
+        self.regressionModel = RegressionModel(192, num_anchors=1)
+        self.classificationModel = ClassificationModel(192, num_anchors=1, num_classes=n_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -285,6 +287,9 @@ class RetinaATSSNet(nn.Module):
                      'c5': [features[2].size(2), features[2].size(3)],
                      'c6': [features[3].size(2), features[3].size(3)],
                      'c7': [features[4].size(2), features[4].size(3)]}
+        # print('Output shapes:')
+        # for feat in features:
+        #     print(feat.size())
 
         locs = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
         class_scores = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
@@ -300,19 +305,16 @@ class RetinaATSSNetLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, config, threshold=0.5):
+    def __init__(self, config, n_candidates=9):
         super(RetinaATSSNetLoss, self).__init__()
-        # self.priors_cxcy = priors_cxcy
-        # self.priors_xy = cxcy_to_xy(priors_cxcy)
-        self.threshold = threshold
-
+        self.n_candidates = n_candidates
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes - 1
 
-        self.smooth_l1 = SmoothL1Loss(reduction='mean')
+        self.regression_loss = SmoothL1Loss(reduction='mean')
         # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.Focal_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.classification_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def create_anchors(self, fmap_dims):
         """
@@ -325,11 +327,11 @@ class RetinaATSSNetLoss(nn.Module):
         #              'c6': 8,
         #              'c7': 4}
 
-        obj_scales = {'c3': 0.035,
-                      'c4': 0.07,
-                      'c5': 0.14,
-                      'c6': 0.28,
-                      'c7': 0.56}
+        obj_scales = {'c3': 0.06,
+                      'c4': 0.12,
+                      'c5': 0.24,
+                      'c6': 0.48,
+                      'c7': 0.96}
         scale_factor = [1.]
         aspect_ratios = {'c3': [1.],
                          'c4': [1.],
@@ -373,9 +375,11 @@ class RetinaATSSNetLoss(nn.Module):
         priors_xy = [cxcy_to_xy(prior) for prior in priors_cxcy]
         prior_split_points = [0]
         for _, value in fmap_dims.items():
-            prior_split_points.append(sum(prior_split_points) + value[0] * value[1])
+            prior_split_points.append(prior_split_points[-1] + value[0] * value[1])
         batch_size = predicted_locs.size(0)
         n_levels = len(fmap_dims)
+        # print(prior_split_points)
+        # print(fmap_dims)
 
         decoded_locs = list()  # length is the batch size for all 4 lists
         true_locs = list()
@@ -404,13 +408,13 @@ class RetinaATSSNetLoss(nn.Module):
             positive_overlaps = list()
             overlap = list()
             for level in range(n_levels):
-                distance = find_distance(xy_to_cxcy(image_bboxes), self.priors_cxcy[level])  # n_bboxes, n_priors
+                distance = find_distance(xy_to_cxcy(image_bboxes), priors_cxcy[level])  # n_bboxes, n_priors
                 # for each object bbox, find the top_k closest prior boxes
                 _, top_idx_level = torch.topk(-1. * distance, min(self.n_candidates, distance.size(1)), dim=1)
                 # print(distance.size(), top_idx_level.size())
 
                 positive_samples_idx.append(top_idx_level)
-                overlap_level = find_jaccard_overlap(image_bboxes, self.priors_xy[level])  # overlap for each level
+                overlap_level = find_jaccard_overlap(image_bboxes, priors_xy[level])  # overlap for each level
                 positive_overlaps.append(torch.gather(overlap_level, dim=1, index=top_idx_level))
                 overlap.append(overlap_level)
 
@@ -453,6 +457,7 @@ class RetinaATSSNetLoss(nn.Module):
                                                              dtype=torch.long).to(self.device)
                 true_locs_per_level = list()
                 decoded_locs_per_level = list()
+                # print('priors per level:', batch_split_predicted_locs[level].size(), priors_cxcy[level].size())
                 total_decoded_locs = cxcy_to_xy(
                     gcxgcy_to_cxcy(batch_split_predicted_locs[level], priors_cxcy[level]))
 
@@ -500,15 +505,15 @@ class RetinaATSSNetLoss(nn.Module):
         true_locs = torch.cat(true_locs, dim=0)
         decoded_locs = torch.cat(decoded_locs, dim=0)
 
-        print('Final stored values:')
-        print(true_locs.size(), true_classes.size())
-        print(decoded_locs.size(), predicted_scores.size())
-        print('true locs:', true_locs[:15, :])
-        print('true classes:', true_classes[0:1000])
-        print((true_classes > 0).sum().float())
-        print(decoded_locs[:15, :])
-
-        exit()
+        # print('Final stored values:')
+        # print(true_locs.size(), true_classes.size())
+        # print(decoded_locs.size(), predicted_scores.size())
+        # print('true locs:', true_locs[:15, :])
+        # print('true classes:', true_classes[0:1000])
+        # print((true_classes > 0).sum().float())
+        # print(decoded_locs[:15, :])
+        #
+        # exit()
 
         # LOCALIZATION LOSS
         loc_loss = self.regression_loss(decoded_locs, true_locs)
@@ -518,13 +523,13 @@ class RetinaATSSNetLoss(nn.Module):
 
         # First, find the loss for all priors
         # conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
-        conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
+        conf_loss = self.classification_loss(predicted_scores, true_classes) / n_positives
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
 
 
-def RetinaATSS34(num_classes, pretrained=False, **kwargs):
+def RetinaATSS34(num_classes, config, pretrained=False, **kwargs):
     """Constructs a ResNet-34 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet

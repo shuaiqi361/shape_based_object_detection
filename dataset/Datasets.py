@@ -2,9 +2,10 @@ import torch
 from torch.utils.data import Dataset
 import json
 import os
-from PIL import Image
+from PIL import Image, ImageDraw
 from .transforms import transform, transform_richer, transform_traffic
 import torchvision.transforms.functional as FT
+import torch.nn.functional as F
 
 
 class PascalVOCDataset(Dataset):
@@ -536,52 +537,73 @@ class COCOMultiScaleDataset(Dataset):
 
         temp_imgs = [b[0] for b in batch]
 
-        widths = [int(img.size(1)) for img in temp_imgs]
-        heights = [int(img.size(2)) for img in temp_imgs]
+        widths = [int(img.size[0]) for img in temp_imgs]
+        heights = [int(img.size[1]) for img in temp_imgs]
 
         max_width = max(widths)
         max_height = max(heights)
         batch_size = len(batch)
 
-        padded_images = torch.zeros(batch_size, 3, max_width, max_height)
+        padded_images = torch.zeros(batch_size, 3, max_height, max_width)
 
         for i in range(batch_size):
             img = temp_imgs[i]
-            padded_images[i, :, :img.size(1), :img.size(2)] = img  # no need to adjust the bbox coordinates
+            padded_images[i, :, :img.size[1], :img.size[0]] = FT.to_tensor(img)  # no need to adjust the bbox coordinates
 
         if max_height < max_width:
             scale = self.min_side / max_height
         else:
             scale = self.min_side / max_width
+
+        new_width = int(round(max_width * scale))
+        pad_width = 32 - new_width % 32
+        if pad_width == 32:
+            pad_width = 0
+        new_height = int(round(max_height * scale))
+        pad_height = 32 - new_height % 32
+        if pad_height == 32:
+            pad_height = 0
+
         for i in range(batch_size):
             # adjust the size of the image and gt bboxes
-            img = padded_images[i]
+            img = FT.to_pil_image(padded_images[i])
             bbox = [[bb[0] / max_width, bb[1] / max_height, bb[2] / max_width,
                      bb[3] / max_height] for bb in batch[i][1]]  # change coordinates to percentages
 
-            new_image = FT.resize(img, (int(round(max_width * scale)), int(round(max_height * scale))))
-            # new_image = FT.to_tensor(new_image)
-            # new_image = FT.normalize(new_image, mean=self.mean, std=self.std)
+            new_image = FT.resize(img, (new_width, new_height))
+            if pad_height + pad_width > 0:
+                paste_image = Image.new('RGB', (new_width + pad_width, new_height + pad_height))
+                paste_image.paste(new_image, (0, 0))
+                bbox = torch.FloatTensor([[bb[0] * new_width / (new_width + pad_width),
+                                           bb[1] * new_height / (new_height + pad_height),
+                                           bb[2] * new_width / (new_width + pad_width),
+                                           bb[3] * new_height / (new_height + pad_height)] for bb in bbox])
+            else:
+                paste_image = new_image
+                bbox = torch.FloatTensor(bbox)
 
-            images.append(new_image)
+            paste_image = FT.to_tensor(paste_image)
+            paste_image = FT.normalize(paste_image, mean=self.mean, std=self.std)
+
+            images.append(paste_image)
             boxes.append(bbox)
             labels.append(batch[i][2])
             ids.append(batch[i][3])
             difficulties.append(batch[i][4])
 
             # draw augmented images and bboxes
-            temp_boxes = [[bb[0] * int(round(max_width * scale)), bb[1] * int(round(max_height * scale)),
-                           bb[2] * int(round(max_width * scale)),
-                           bb[3] * int(round(max_height * scale))] for bb in bbox]
-            draw = Image.ImageDraw.Draw(new_image)
-            n_boxes = temp_boxes.size(0)
-            for j in range(n_boxes):
-                coord = ((temp_boxes[j][0], temp_boxes[j][1]),
-                         (temp_boxes[j][2], temp_boxes[j][3]))
-                draw.rectangle(coord)
-            new_image.show()
-
-            exit()
+        #     temp_boxes = [[bb[0] * (new_width + pad_width), bb[1] * (new_height + pad_height),
+        #                    bb[2] * (new_width + pad_width),
+        #                    bb[3] * (new_height + pad_height)] for bb in bbox]
+        #     draw = ImageDraw.Draw(paste_image)
+        #     n_boxes = len(temp_boxes)
+        #     for j in range(n_boxes):
+        #         coord = ((temp_boxes[j][0], temp_boxes[j][1]),
+        #                  (temp_boxes[j][2], temp_boxes[j][3]))
+        #         draw.rectangle(coord)
+        #     paste_image.show()
+        #
+        # exit()
 
         images = torch.stack(images, dim=0)
 
