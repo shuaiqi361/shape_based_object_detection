@@ -397,6 +397,81 @@ def photometric_distort(image):
     return new_image
 
 
+def transform_init(image, boxes, labels, split, config):
+    """
+    Apply the transformations above.
+
+    :param config:
+    :param operation_list:
+    :param resize_dim:
+    :param resize: resize training images
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param labels: labels of objects, a tensor of dimensions (n_objects)
+    :param difficulties: difficulties of detection of these objects, a tensor of dimensions (n_objects)
+    :param split: one of 'TRAIN' or 'TEST', since different sets of transformations are applied
+    :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
+    """
+    assert split in {'TRAIN', 'TEST', 'VAL'}
+    operation_list = config.model['operation_list']
+    return_percent_coords = config.model['return_percent_coords']
+    # return_percent_coords = False  # for image size unify
+    resize_dim = (config.model['input_size'], config.model['input_size'])
+
+    # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
+    # see: https://pytorch.org/docs/stable/torchvision/models.html
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
+    new_image = image
+    new_boxes = boxes
+    new_labels = labels
+
+    # Skip the following operations for evaluation/testing
+    if split == 'TRAIN':
+        # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
+        new_image = photometric_distort(new_image)
+
+        # new_image = unify_size(new_image)
+
+        # Convert PIL image to Torch tensor
+        new_image = FT.to_tensor(new_image)
+
+        # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
+        # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+        if random.random() < 0.25 and 'expand' in operation_list:
+            new_image, new_boxes = expand(new_image, boxes, filler=mean)
+
+        # Randomly crop image (zoom in)
+        if random.random() < 0.25 and 'random_crop' in operation_list:
+            new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
+
+        # Convert Torch tensor to PIL image
+        new_image = FT.to_pil_image(new_image)
+        # Flip image with a 50% chance
+        if random.random() < 0.5:
+            new_image, new_boxes = flip(new_image, new_boxes)
+
+    # Resize image
+    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
+    # temp_boxes = new_boxes.clamp_(0, 1)
+    # draw = ImageDraw.Draw(new_image)
+    # n_boxes = temp_boxes.size(0)
+    # for i in range(n_boxes):
+    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
+    #     draw.rectangle(coord)
+    # new_image.show()
+    # new_image.show()
+    # Convert PIL image to Torch tensor
+    new_image = FT.to_tensor(new_image)
+
+    # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
+    new_image = FT.normalize(new_image, mean=mean, std=std)
+
+    return new_image, new_boxes, new_labels
+
+
 def transform(image, boxes, labels, split, config):
     """
     Apply the transformations above.

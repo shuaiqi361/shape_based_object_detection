@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import json
 import os
 from PIL import Image, ImageDraw
-from .transforms import transform, transform_richer, transform_traffic
+from .transforms import transform, transform_richer, transform_traffic, transform_init
 import torchvision.transforms.functional as FT
 import torch.nn.functional as F
 
@@ -133,9 +133,9 @@ class COCO17Dataset(Dataset):
         # image, boxes, labels = transform_richer(image, boxes, labels,
         #                                         split=self.split,
         #                                         config=self.config)
-        image, boxes, labels = transform(image, boxes, labels,
-                                         split=self.split,
-                                         config=self.config)
+        image, boxes, labels = transform_init(image, boxes, labels,
+                                              split=self.split,
+                                              config=self.config)
         return image, boxes, labels, ids, difficulties
 
     def __len__(self):
@@ -548,7 +548,8 @@ class COCOMultiScaleDataset(Dataset):
 
         for i in range(batch_size):
             img = temp_imgs[i]
-            padded_images[i, :, :img.size[1], :img.size[0]] = FT.to_tensor(img)  # no need to adjust the bbox coordinates
+            padded_images[i, :, :img.size[1], :img.size[0]] = FT.to_tensor(
+                img)  # no need to adjust the bbox coordinates
 
         if max_height < max_width:
             scale = self.min_side / max_height

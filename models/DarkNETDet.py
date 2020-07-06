@@ -6,6 +6,7 @@ from dataset.transforms import *
 from operators.Loss import IouLoss, SmoothL1Loss, LabelSmoothingLoss, SigmoidFocalLoss
 from metrics import find_jaccard_overlap
 from .modules import Mish, ConvGNAct
+import math
 
 
 class Residual(nn.Module):
@@ -425,6 +426,20 @@ class NETNetDetector(nn.Module):
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
 
+        # initialization for focal loss
+        self.detect_convs.cl_conv3.weight.data.fill_(0)
+        self.detect_convs.cl_conv3.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv4.weight.data.fill_(0)
+        self.detect_convs.cl_conv4.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv5.weight.data.fill_(0)
+        self.detect_convs.cl_conv5.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv6.weight.data.fill_(0)
+        self.detect_convs.cl_conv6.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv7.weight.data.fill_(0)
+        self.detect_convs.cl_conv7.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+        self.detect_convs.cl_conv8.weight.data.fill_(0)
+        self.detect_convs.cl_conv8.bias.data.fill_(-math.log((1.0 - self.prior) / self.prior))
+
     def forward(self, image):
         """
         Forward propagation.
@@ -519,8 +534,7 @@ class NETNetDetectorLoss(nn.Module):
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.regression_loss = SmoothL1Loss()
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.classification_loss = SigmoidFocalLoss()
-        # self.CELoss = LabelSmoothingLoss(self.n_classes, smoothing=self.theta, reduce=False)
+        self.classification_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
 
     def forward(self, odm_locs, odm_scores, boxes, labels):
         """
@@ -536,9 +550,9 @@ class NETNetDetectorLoss(nn.Module):
 
         assert n_priors == odm_locs.size(1) == odm_scores.size(1)
 
-        # decoded_odm_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        # true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
-        true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        decoded_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
+        # true_locs_encoded = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(self.device)
         true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(self.device)
 
         # For each image
@@ -567,8 +581,9 @@ class NETNetDetectorLoss(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            # label_for_each_prior[overlap_for_each_prior < self.threshold] = -1  # label in 0.4-0.5 is not used
             label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
+            label_for_each_prior[self.threshold - 0.25 < overlap_for_each_prior < self.threshold] = -1
+            # label in 0.45 - 0.7 is not used
 
             # Store
             true_classes[i] = label_for_each_prior
@@ -576,44 +591,47 @@ class NETNetDetectorLoss(nn.Module):
             # Encode center-size object coordinates into the form we regressed predicted boxes to
             # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]),
             #                                       xy_to_cxcy(decoded_arm_locs[i]))
-            true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
-            # true_locs[i] = boxes[i][object_for_each_prior]
-            # print(odm_locs.size(), decoded_arm_locs.size())
-            # decoded_odm_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
+            # true_locs_encoded[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)
+            true_locs[i] = boxes[i][object_for_each_prior]
+            decoded_locs[i] = cxcy_to_xy(gcxgcy_to_cxcy(odm_locs[i], self.priors_cxcy))
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes > 0
 
         # LOCALIZATION LOSS
-        # loc_loss = self.regression_loss(decoded_odm_locs[positive_priors].view(-1, 4), true_locs[positive_priors].view(-1, 4))
-        loc_loss = self.regression_loss(odm_locs[positive_priors].view(-1, 4), true_locs_encoded[positive_priors].view(-1, 4))
+        loc_loss = self.regression_loss(decoded_locs[positive_priors].view(-1, 4),
+                                        true_locs[positive_priors].view(-1, 4))
+        # loc_loss = self.regression_loss(odm_locs[positive_priors].view(-1, 4),
+        #                                 true_locs_encoded[positive_priors].view(-1, 4))
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
-        n_positives = positive_priors.sum(dim=1)  # (N)
-        n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
-
-        # First, find the loss for all priors
-        conf_loss_all = self.cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
-        conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
-
-        # We already know which priors are positive
-        conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
-
-        # Next, find which priors are hard-negative
-        # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-        conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
-        conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
-
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
-                                              descending=True)  # (N, 8732), sorted by decreasing hardness
-        hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
-            self.device)  # (N, 8732)
-        hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
-        conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
-
-        conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
+        n_positives = positive_priors.sum(dim=1).float()  # (N)
+        conf_loss = self.classification_loss(odm_scores.view(-1, n_classes),
+                                    true_classes.view(-1)) / n_positives
+        # n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
+        #
+        # # First, find the loss for all priors
+        # conf_loss_all = self.cross_entropy(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        # # conf_loss_all = self.CELoss(odm_scores.view(-1, n_classes), true_classes.view(-1))  # (N * 8732)
+        # conf_loss_all = conf_loss_all.view(batch_size, -1)  # (N, 8732)
+        #
+        # # We already know which priors are positive
+        # conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
+        #
+        # # Next, find which priors are hard-negative
+        # # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
+        # conf_loss_neg = conf_loss_all.clone()  # (N, 8732)
+        # conf_loss_neg[positive_priors] = 0.  # (N, 8732), positive priors are ignored (never in top n_hard_negatives)
+        #
+        # conf_loss_neg, _ = conf_loss_neg.sort(dim=-1,
+        #                                       descending=True)  # (N, 8732), sorted by decreasing hardness
+        # hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(
+        #     self.device)  # (N, 8732)
+        # hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, 8732)
+        # conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+        #
+        # conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss

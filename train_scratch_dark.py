@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset, COCOMultiScaleDataset
 from utils import create_logger, save_checkpoint
 from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
@@ -86,6 +86,17 @@ def main():
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
+        if args.finetune:
+            checkpoint = torch.load(args.load_path, map_location=config.device)
+            init_model = checkpoint['model']
+            reuse_layers = {}
+            for param_tensor in init_model.state_dict().keys():
+                if param_tensor.startswith('nnfm') or param_tensor.startswith('base.'):
+                    reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
+                    print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
+            model.load_state_dict(reuse_layers, strict=False)
+            str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
+            config.logger.info(str_info)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
@@ -109,7 +120,7 @@ def main():
         train_dataset = COCO17Dataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False, drop_last=True)
+                                                   pin_memory=True, drop_last=False)
         test_dataset = COCO17Dataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
