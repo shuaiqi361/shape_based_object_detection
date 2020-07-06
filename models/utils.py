@@ -209,7 +209,7 @@ def detect(predicted_locs, predicted_scores, min_score, max_overlap, top_k, prio
 
 
 def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k, priors_cxcy,
-           config, prior_positives_idx=None):
+                 config, prior_positives_idx=None, fmap_dims=None):
     """
     Decipher the 22536 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -232,7 +232,7 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
     device = config.device
     focal_type = config['focal_type']
     batch_size = predicted_locs.size(0)
-    n_priors = priors_cxcy.size(0)
+
     n_classes = predicted_scores.size(2)
     # print(n_priors, n_classes, predicted_locs.size(), predicted_scores.size())
 
@@ -245,9 +245,6 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
     all_images_boxes = list()
     all_images_labels = list()
     all_images_scores = list()
-
-    # print(n_priors, predicted_locs.size(),predicted_scores.size())
-    # assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
     for i in range(batch_size):
         # Decode object coordinates from the form we regressed predicted boxes to
@@ -279,15 +276,14 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
         for c in range(n_classes):  # n_classes = 20 for VOC and 80 for COCO
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
             class_scores = class_scores_all[:, c]
-            score_above_min_score = (class_scores > min_score).long()  # for indexing
-            # print(c, score_above_min_score.size())
-            # exit()
+            top_k_scores, _ = torch.topk(class_scores, 2500)
+            min_score = max(min_score, top_k_scores.min())
+            score_above_min_score = (class_scores >= min_score).long()  # for indexing
+
             n_above_min_score = torch.sum(score_above_min_score).item()
 
             if n_above_min_score == 0:
                 continue
-
-            # print(class_scores.size(), torch.nonzero(score_above_min_score).squeeze(dim=1).size())
 
             class_scores = torch.index_select(class_scores, dim=0,
                                               index=torch.nonzero(score_above_min_score).squeeze(dim=1))
@@ -298,9 +294,6 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
             anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
             # anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
 
-            # Store only unsuppressed boxes for this class
-            # print(class_decoded_locs[anchor_nms_idx, :].size(), anchor_nms_idx.size(0),
-            #       torch.LongTensor(anchor_nms_idx.size(0) * [c]).size(), class_scores[anchor_nms_idx].size())
             image_boxes.append(class_decoded_locs[anchor_nms_idx, :])
             image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c + 1]).to(device))
             image_scores.append(class_scores[anchor_nms_idx])
