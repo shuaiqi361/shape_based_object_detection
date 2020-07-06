@@ -395,11 +395,11 @@ class NETNetDetector(nn.Module):
     The RefineDet512 network - encapsulates the base VGG network, auxiliary, ARM and ODM
     """
 
-    def __init__(self, n_classes, config):
+    def __init__(self, n_classes, config, prior=0.01):
         super(NETNetDetector, self).__init__()
         self.device = config.device
         self.n_classes = n_classes - 1
-        self.theta = 0.01
+        self.prior = prior
 
         self.feat_channels = {'DB2': 256,
                               'DB3': 512,
@@ -519,19 +519,18 @@ class NETNetDetectorLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, threshold=0.7, neg_pos_ratio=3, theta=0.1):
+    def __init__(self, priors_cxcy, config, threshold=0.7, theta=0.1):
         super(NETNetDetectorLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
-        self.neg_pos_ratio = neg_pos_ratio
         self.alpha = config.reg_weights
         self.device = config.device
         self.n_classes = config.n_classes - 1
 
         self.theta = theta
 
-        self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
         # self.regression_loss = SmoothL1Loss()
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         self.classification_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
@@ -581,8 +580,8 @@ class NETNetDetectorLoss(nn.Module):
             label_for_each_prior = labels[i][object_for_each_prior]
 
             # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0
-            label_for_each_prior[self.threshold - 0.25 < overlap_for_each_prior < self.threshold] = -1
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = -1
+            label_for_each_prior[overlap_for_each_prior < self.threshold - 0.25] = 0
             # label in 0.45 - 0.7 is not used
 
             # Store
@@ -606,7 +605,7 @@ class NETNetDetectorLoss(nn.Module):
 
         # CONFIDENCE LOSS
         # Number of positive and hard-negative priors per image
-        n_positives = positive_priors.sum(dim=1).float()  # (N)
+        n_positives = positive_priors.sum().float()  # (N)
         conf_loss = self.classification_loss(odm_scores.view(-1, n_classes),
                                     true_classes.view(-1)) / n_positives
         # n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)

@@ -231,6 +231,7 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
     box_type = config.model['box_type']
     device = config.device
     focal_type = config['focal_type']
+    reg_type = config['reg_loss']
     batch_size = predicted_locs.size(0)
 
     n_classes = predicted_scores.size(2)
@@ -291,8 +292,10 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
             class_decoded_locs = torch.index_select(decoded_locs_all, dim=0,
                                                     index=torch.nonzero(score_above_min_score).squeeze(dim=1))
 
-            anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
-            # anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
+            if reg_type.lower() == 'iou':
+                anchor_nms_idx, _ = diounms(class_decoded_locs, class_scores, max_overlap)
+            else:
+                anchor_nms_idx = nms(class_decoded_locs, class_scores, max_overlap)
 
             image_boxes.append(class_decoded_locs[anchor_nms_idx, :])
             image_labels.append(torch.LongTensor(anchor_nms_idx.size(0) * [c + 1]).to(device))

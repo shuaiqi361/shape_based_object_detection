@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset, COCOMultiScaleDataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
 from utils import create_logger, save_checkpoint
 from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
@@ -74,6 +74,12 @@ def main():
     if not isinstance(config.model['input_size'], list):
         input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
+    now = datetime.now()
+    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                            'log_{}_{}.txt'.format(config.model['arch'],
+                                                                                   date_time)))
+
     # Learning parameters
     if args.recover:
         assert args.load_path is not None
@@ -91,6 +97,8 @@ def main():
             init_model = checkpoint['model']
             reuse_layers = {}
             for param_tensor in init_model.state_dict().keys():
+                # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
+                #         or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
                 if param_tensor.startswith('nnfm') or param_tensor.startswith('base.'):
                     reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
                     print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
@@ -120,7 +128,7 @@ def main():
         train_dataset = COCO17Dataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=True, drop_last=False)
+                                                   pin_memory=True, drop_last=True)
         test_dataset = COCO17Dataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -173,9 +181,9 @@ def main():
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
     config.tb_logger = SummaryWriter(config.event_path)
-    config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                'log_{}_{}.txt'.format(config.model['arch'],
-                                                                                       date_time)))
+    # config.logger = create_logger('global_logger', os.path.join(config.log_path,
+    #                                                             'log_{}_{}.txt'.format(config.model['arch'],
+    #                                                                                    date_time)))
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 
