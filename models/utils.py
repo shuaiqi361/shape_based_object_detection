@@ -277,7 +277,7 @@ def detect_focal(predicted_locs, predicted_scores, min_score, max_overlap, top_k
         for c in range(n_classes):  # n_classes = 20 for VOC and 80 for COCO
             # Keep only predicted boxes and scores where scores for this class are above the minimum score
             class_scores = class_scores_all[:, c]
-            top_k_scores, _ = torch.topk(class_scores, 3500)
+            top_k_scores, _ = torch.topk(class_scores, min(3500, len(class_scores) - 1), dim=0)
             min_score = max(min_score, top_k_scores.min())
             score_above_min_score = (class_scores >= min_score).long()  # for indexing
 
