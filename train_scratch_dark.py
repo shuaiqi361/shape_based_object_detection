@@ -89,6 +89,8 @@ def main():
         model = checkpoint['model']
         _, criterion = model_entry(config)
         optimizer = checkpoint['optimizer']
+        del checkpoint
+        torch.cuda.empty_cache()
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
@@ -105,6 +107,8 @@ def main():
             model.load_state_dict(reuse_layers, strict=False)
             str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
             config.logger.info(str_info)
+            del checkpoint, init_model
+            torch.cuda.empty_cache()
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
