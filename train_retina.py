@@ -71,6 +71,12 @@ def main():
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
 
+    now = datetime.now()
+    date_time = now.strftime("%m-%d-%Y_H-%M-%S")
+    config.logger = create_logger('global_logger', os.path.join(config.log_path,
+                                                                'log_{}_{}.txt'.format(config.model['arch'],
+                                                                                       date_time)))
+
     # Learning parameters
     if args.recover:
         assert args.load_path is not None
@@ -80,9 +86,26 @@ def main():
         model = checkpoint['model']
         _, criterion = model_entry(config)
         optimizer = checkpoint['optimizer']
+        del checkpoint
+        torch.cuda.empty_cache()
     else:
         start_epoch = 0
         model, criterion = model_entry(config)
+        if args.finetune:
+            checkpoint = torch.load(args.load_path, map_location=config.device)
+            init_model = checkpoint['model']
+            reuse_layers = {}
+            for param_tensor in init_model.state_dict().keys():
+                # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
+                #         or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
+                if param_tensor.startswith('base.'):
+                    reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
+                    print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
+            model.load_state_dict(reuse_layers, strict=False)
+            str_info = 'Fintuning model-{} from {}'.format(config.model['arch'].upper(), args.load_path)
+            config.logger.info(str_info)
+            del checkpoint, init_model, reuse_layers
+            torch.cuda.empty_cache()
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
@@ -106,7 +129,7 @@ def main():
         train_dataset = COCOMultiScaleDataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False, drop_last=False)
+                                                   pin_memory=True, drop_last=False)
         test_dataset = COCOMultiScaleDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -158,9 +181,9 @@ def main():
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
     config.tb_logger = SummaryWriter(config.event_path)
-    config.logger = create_logger('global_logger', os.path.join(config.log_path,
-                                                                'log_{}_{}.txt'.format(config.model['arch'],
-                                                                                       date_time)))
+    # config.logger = create_logger('global_logger', os.path.join(config.log_path,
+    #                                                             'log_{}_{}.txt'.format(config.model['arch'],
+    #                                                                                    date_time)))
     config.logger.info('args: {}'.format(pprint.pformat(args)))
     config.logger.info('config: {}'.format(pprint.pformat(config)))
 

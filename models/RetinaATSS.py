@@ -221,9 +221,9 @@ class RetinaATSSNet(nn.Module):
         # self.anchors_cxcy = self.create_anchors()
         # self.priors_cxcy = self.anchors_cxcy
 
-        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
-        self.regressionModel = RegressionModel(192, num_anchors=1)
-        self.classificationModel = ClassificationModel(192, num_anchors=1, num_classes=n_classes)
+        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2], 160)
+        self.regressionModel = RegressionModel(160, num_anchors=1)
+        self.classificationModel = ClassificationModel(160, num_anchors=1, num_classes=n_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -406,7 +406,7 @@ class RetinaATSSNetLoss(nn.Module):
             # find all positive samples that are close to each gt object
             positive_samples_idx = list()
             positive_overlaps = list()
-            overlap = list()
+            # overlap = list()
             for level in range(n_levels):
                 distance = find_distance(xy_to_cxcy(image_bboxes), priors_cxcy[level])  # n_bboxes, n_priors
                 # for each object bbox, find the top_k closest prior boxes
@@ -416,7 +416,7 @@ class RetinaATSSNetLoss(nn.Module):
                 positive_samples_idx.append(top_idx_level)
                 overlap_level = find_jaccard_overlap(image_bboxes, priors_xy[level])  # overlap for each level
                 positive_overlaps.append(torch.gather(overlap_level, dim=1, index=top_idx_level))
-                overlap.append(overlap_level)
+                # overlap.append(overlap_level)
 
             positive_overlaps_cat = torch.cat(positive_overlaps, dim=1)  # n_bboxes, n_priors * 6 levels
             # print('positive_overlaps_cat shape: ', positive_overlaps_cat.size())
@@ -424,6 +424,9 @@ class RetinaATSSNetLoss(nn.Module):
             overlap_std = torch.std(positive_overlaps_cat, dim=1)
             # print(overlap_mean, overlap_std)
             iou_threshold = overlap_mean + overlap_std  # n_objects, for each object, we have one threshold
+            del positive_overlaps_cat
+            torch.cuda.empty_cache()
+
 
             # one prior can only be associated to one gt object
             # For each prior, find the object that has the maximum overlap, return [value, indices]
