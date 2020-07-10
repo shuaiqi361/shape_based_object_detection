@@ -221,9 +221,9 @@ class RetinaATSSNet(nn.Module):
         # self.anchors_cxcy = self.create_anchors()
         # self.priors_cxcy = self.anchors_cxcy
 
-        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2], 160)
-        self.regressionModel = RegressionModel(160, num_anchors=1)
-        self.classificationModel = ClassificationModel(160, num_anchors=1, num_classes=n_classes)
+        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2], 150)
+        self.regressionModel = RegressionModel(150, num_anchors=1)
+        self.classificationModel = ClassificationModel(150, num_anchors=1, num_classes=n_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
