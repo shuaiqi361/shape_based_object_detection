@@ -305,7 +305,7 @@ class RetinaATSSNetTrafficLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, config, n_candidates=11):
+    def __init__(self, config, n_candidates=9):
         super(RetinaATSSNetTrafficLoss, self).__init__()
         self.n_candidates = n_candidates
         self.alpha = config.reg_weights

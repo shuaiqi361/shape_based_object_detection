@@ -223,9 +223,9 @@ class TrafficDataset(Dataset):
         difficulties = torch.LongTensor(objects['difficulties'])
 
         # Apply transformations
-        image, boxes, labels, = transform(image, boxes, labels,
-                                          split=self.split,
-                                          config=self.config)
+        image, boxes, labels, = transform_init(image, boxes, labels,
+                                               split=self.split,
+                                               config=self.config)
         # image, boxes, labels = transform_richer(image, boxes, labels,
         #                                         split=self.split,
         #                                         config=self.config)

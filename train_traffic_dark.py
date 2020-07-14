@@ -18,7 +18,7 @@ from models import model_entry
 from dataset.Datasets import PascalVOCDataset, COCO17Dataset, TrafficDataset, BaseModelVOCOCODataset, DetracDataset
 from utils import create_logger, save_checkpoint
 from dataset.transforms import traffic_augment
-from models.utils import detect
+from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
 
 parser = argparse.ArgumentParser(description='PyTorch 2D object detection training script.')
@@ -72,8 +72,8 @@ def main():
     train_data_folder = config.train_data_root
     val_data_folder = config.val_data_root
 
-    if not isinstance(config.model['input_size'], list):
-        input_size = (int(config.model['input_size']), int(config.model['input_size']))
+    # if not isinstance(config.model['input_size'], list):
+    #     input_size = (int(config.model['input_size']), int(config.model['input_size']))
 
     now = datetime.now()
     date_time = now.strftime("%m-%d-%Y_H-%M-%S")
@@ -146,7 +146,7 @@ def main():
         train_dataset = TrafficDataset(train_data_folder, split='train', config=config)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                                   pin_memory=False, drop_last=True)
+                                                   pin_memory=True, drop_last=True)
         test_dataset = TrafficDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
@@ -190,7 +190,8 @@ def main():
 
     cudnn.benchmark = True
     model = model.to(config.device)
-    criterion = criterion(priors_cxcy=model.priors_cxcy, config=config).to(config.device)
+    # criterion = criterion(priors_cxcy=model.priors_cxcy, config=config).to(config.device)
+    criterion = criterion(config=config).to(config.device)
 
     # create logger to track training results
     now = datetime.now()
@@ -215,7 +216,7 @@ def main():
     for epoch in range(start_epoch, epochs):
         config.tb_logger.add_scalar('learning_rate', epoch)
 
-        # evaluate(test_loader, model, optimizer, config=config)
+        # evaluate(test_loader, model, criterion, config=config)
         # save_checkpoint(epoch, model, optimizer,
         #                 name='{}/{}_{}_checkpoint_epoch-{}.pth.tar'.format(config.save_path,
         #                                                                    config.model['arch'].lower(),
@@ -231,7 +232,7 @@ def main():
 
         # Save checkpoint
         if (epoch > 0 and epoch % val_freq == 0) or epoch == 1:
-            _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
+            _, current_mAP = evaluate(test_loader, model, criterion, config=config)
             config.tb_logger.add_scalar('mAP', current_mAP, epoch)
             if current_mAP > best_mAP:
                 save_checkpoint(epoch, model, optimizer,
@@ -241,7 +242,7 @@ def main():
                 best_mAP = current_mAP
 
     # Save the last checkpoint if it is better
-    _, current_mAP = evaluate(test_loader, model, optimizer, config=config)
+    _, current_mAP = evaluate(test_loader, model, criterion, config=config)
     config.tb_logger.add_scalar('mAP', current_mAP, epoch)
     if current_mAP > best_mAP:
         save_checkpoint(epoch, model, optimizer,
@@ -273,7 +274,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     if epoch == 0 and config.optimizer['warm_up']:
         lr_warmup = WarmUpScheduler(config.optimizer['base_lr'], config.optimizer['warm_up_steps'], optimizer)
 
-    for i, (images, boxes, labels, ignored_regions, _, _) in enumerate(train_loader):
+    for i, (images, boxes, labels, _, _) in enumerate(train_loader):
         if config.optimizer['warm_up'] and epoch == 0 and i % config.optimizer['warm_up_freq'] == 0 and i > 0:
             # warm_up_learning_rate(optimizer, rate=config.optimizer['warm_up_rate'])
             lr_warmup.update()
@@ -289,13 +290,13 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         images = images.to(config.device)  # (batch_size (N), 3, 300, 300)
         boxes = [b.to(config.device) for b in boxes]
         labels = [l.to(config.device) for l in labels]
-        ignored_regions = [r.to(config.device) for r in ignored_regions]
+        # ignored_regions = [r.to(config.device) for r in ignored_regions]
 
         # Forward prop.
-        predicted_locs, predicted_scores = model(images)
+        predicted_locs, predicted_scores, fmap = model(images)
 
         # Loss
-        loss = criterion(predicted_locs, predicted_scores, boxes, labels, ignored_regions)
+        loss = criterion(predicted_locs, predicted_scores, boxes, labels, fmap)
 
         # Backward prop.
         loss.backward()
@@ -321,7 +322,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     del predicted_locs, predicted_scores, images, boxes, labels, ignored_regions
 
 
-def evaluate(test_loader, model, optimizer, config):
+def evaluate(test_loader, model, criterion, config):
     """
     Evaluate.
 
@@ -346,7 +347,7 @@ def evaluate(test_loader, model, optimizer, config):
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, _, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
             # images = torch.stack(images, dim=0).to(config.device)
             images = images.to(config.device)  # (N, 3, 512, 512) for test
             boxes = [b.to(config.device) for b in boxes]
@@ -355,7 +356,7 @@ def evaluate(test_loader, model, optimizer, config):
 
             # Forward prop.
             time_start = time.time()
-            predicted_locs, predicted_scores = model(images)
+            predicted_locs, predicted_scores, fmap = model(images)
 
             # Detect objects in SSD output
             if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO':
@@ -375,13 +376,20 @@ def evaluate(test_loader, model, optimizer, config):
                            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
                            config=config)
             elif config.data_name.upper() == 'TRAFFIC' or config.data_name.upper() == 'DETRAC':
+                # det_boxes_batch, det_labels_batch, det_scores_batch = \
+                #     detect(predicted_locs,
+                #            predicted_scores,
+                #            min_score=config.nms['min_score'],
+                #            max_overlap=config.nms['max_overlap'],
+                #            top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
+                #            config=config)
                 det_boxes_batch, det_labels_batch, det_scores_batch = \
-                    detect(predicted_locs,
-                           predicted_scores,
-                           min_score=config.nms['min_score'],
-                           max_overlap=config.nms['max_overlap'],
-                           top_k=config.nms['top_k'], priors_cxcy=model.priors_cxcy,
-                           config=config)
+                    detect_focal(predicted_locs,
+                                 predicted_scores,
+                                 min_score=config.nms['min_score'],
+                                 max_overlap=config.nms['max_overlap'],
+                                 top_k=config.nms['top_k'], priors_cxcy=criterion.create_anchors(fmap),
+                                 config=config, fmap_dims=fmap)
             else:
                 raise NotImplementedError
 
