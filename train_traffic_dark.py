@@ -97,8 +97,9 @@ def main():
             init_model = checkpoint['model']
             reuse_layers = {}
             for param_tensor in init_model.state_dict().keys():
-                if param_tensor.startswith('aux_convs.') or param_tensor.startswith('tcb_convs.') \
-                        or param_tensor.startswith('base.'):
+                # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('tcb_convs.') \
+                #         or param_tensor.startswith('base.'):
+                if param_tensor.startswith('fpn.'):
                     reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
                     print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
             model.load_state_dict(reuse_layers, strict=False)
@@ -281,11 +282,11 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         optimizer.zero_grad()
 
         # Bag of Freebies, image mixup and mosaic
-        images, boxes, labels, ignored_regions = traffic_augment(images, boxes, labels, ignored_regions, config)
+        # images, boxes, labels, ignored_regions = traffic_augment(images, boxes, labels, ignored_regions, config)
 
         # Move to default device
-        images = torch.stack(images, dim=0).to(config.device)
-        # images = images.to(config.device)  # (batch_size (N), 3, 300, 300)
+        # images = torch.stack(images, dim=0).to(config.device)
+        images = images.to(config.device)  # (batch_size (N), 3, 300, 300)
         boxes = [b.to(config.device) for b in boxes]
         labels = [l.to(config.device) for l in labels]
         ignored_regions = [r.to(config.device) for r in ignored_regions]
@@ -346,8 +347,8 @@ def evaluate(test_loader, model, optimizer, config):
     with torch.no_grad():
         # Batches
         for i, (images, boxes, labels, _, _, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
-            images = torch.stack(images, dim=0).to(config.device)
-            # images = images.to(config.device)  # (N, 3, 512, 512) for test
+            # images = torch.stack(images, dim=0).to(config.device)
+            images = images.to(config.device)  # (N, 3, 512, 512) for test
             boxes = [b.to(config.device) for b in boxes]
             labels = [l.to(config.device) for l in labels]
             difficulties = [d.to(config.device) for d in difficulties]

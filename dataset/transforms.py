@@ -491,7 +491,7 @@ def transform(image, boxes, labels, split, config):
     operation_list = config.model['operation_list']
     # return_percent_coords = config.model['return_percent_coords']
     return_percent_coords = False  # for image size unify
-    resize_dim = (config.model['input_size'], config.model['input_size'])
+    resize_dim = (config.model['input_size'][0], config.model['input_size'][1])
 
     # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
     # see: https://pytorch.org/docs/stable/torchvision/models.html
@@ -528,21 +528,23 @@ def transform(image, boxes, labels, split, config):
             new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image
-    # new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
-    # temp_boxes = new_boxes.clamp_(0, 1)
-    # draw = ImageDraw.Draw(new_image)
-    # n_boxes = temp_boxes.size(0)
-    # for i in range(n_boxes):
-    #     coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
-    #              (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
-    #     draw.rectangle(coord)
-    # new_image.show()
+    new_image, new_boxes = resize(new_image, new_boxes, dims=resize_dim, return_percent_coords=return_percent_coords)
+    temp_boxes = new_boxes.clamp_(0, 1)
+    draw = ImageDraw.Draw(new_image)
+    n_boxes = temp_boxes.size(0)
+    for i in range(n_boxes):
+        coord = ((int(temp_boxes[i][0] * resize_dim[1]), int(temp_boxes[i][1] * resize_dim[0])),
+                 (int(temp_boxes[i][2] * resize_dim[1]), int(temp_boxes[i][3] * resize_dim[0])))
+        draw.rectangle(coord)
+    new_image.show()
+    exit()
+
     # new_image.show()
     # Convert PIL image to Torch tensor
-    # new_image = FT.to_tensor(new_image)
+    new_image = FT.to_tensor(new_image)
 
     # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
-    # new_image = FT.normalize(new_image, mean=mean, std=std)
+    new_image = FT.normalize(new_image, mean=mean, std=std)
 
     return new_image, new_boxes, new_labels
 
