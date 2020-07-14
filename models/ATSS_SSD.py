@@ -57,20 +57,20 @@ class VGGBase(nn.Module):
         :param image: images, a tensor of dimensions (N, 3, 512, 512)
         :return: lower-level feature maps conv4_3 and conv7
         """
-        out = F.relu(self.conv1_1(image))  # (N, 64, 300, 300)
+        out = F.relu(self.conv1_1(image))  # (N, 64, 300, 300) 360, 640
         out = F.relu(self.conv1_2(out))  # (N, 64, 300, 300)
         out = self.pool1(out)  # (N, 64, 150, 150)
 
-        out = F.relu(self.conv2_1(out))  # (N, 128, 150, 150)
+        out = F.relu(self.conv2_1(out))  # (N, 128, 150, 150) 180, 320
         out = F.relu(self.conv2_2(out))  # (N, 128, 150, 150)
         out = self.pool2(out)  # (N, 128, 75, 75)
 
-        out = F.relu(self.conv3_1(out))  # (N, 256, 75, 75)
+        out = F.relu(self.conv3_1(out))  # (N, 256, 75, 75) 90, 160
         out = F.relu(self.conv3_2(out))  # (N, 256, 75, 75)
         out = F.relu(self.conv3_3(out))  # (N, 256, 75, 75)
         out = self.pool3(out)  # (N, 256, 38, 38), it would have been 37 if not for ceil_mode = True
 
-        out = F.relu(self.conv4_1(out))  # (N, 512, 38, 38)
+        out = F.relu(self.conv4_1(out))  # (N, 512, 38, 38) 45, 80
         out = F.relu(self.conv4_2(out))  # (N, 512, 38, 38)
         out = F.relu(self.conv4_3(out))  # (N, 512, 38, 38)
         conv4_3_feats = out  # (N, 512, 38, 38)
@@ -428,11 +428,16 @@ class ATSSSSD512(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'conv4_3': [38, 38],
-                     'conv7': [19, 19],
-                     'conv8_2': [10, 10],
-                     'conv9_2': [5, 5],
-                     'conv10_2': [3, 3]}
+        # fmap_dims = {'conv4_3': [38, 38],
+        #              'conv7': [19, 19],
+        #              'conv8_2': [10, 10],
+        #              'conv9_2': [5, 5],
+        #              'conv10_2': [3, 3]}
+        fmap_dims = {'conv4_3': [45, 80],
+                     'conv7': [22, 40],
+                     'conv8_2': [11, 20],
+                     'conv9_2': [6, 10],
+                     'conv10_2': [3, 5]}
 
         obj_scales = {'conv4_3': 0.08,
                       'conv7': 0.16,
@@ -486,7 +491,9 @@ class ATSSSSD512Loss(nn.Module):
         self.n_classes = config.n_classes - 1
         self.n_candidates = n_candidates
 
-        self.prior_split_points = [0, 1444, 1805, 1905, 1930, 1939]
+        # self.prior_split_points = [0, 1444, 1805, 1905, 1930, 1939]
+        self.prior_split_points = [0, 45 * 80, 45 * 80 + 22 * 40, 45 * 80 + 22 * 40 + 11 * 20,
+        45 * 80 + 22 * 40 + 11 * 20 + 6 * 10, 45 * 80 + 22 * 40 + 11 * 20 + 60 + 3 * 5]
         self.regression_loss = SmoothL1Loss(reduction='mean')
         # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)

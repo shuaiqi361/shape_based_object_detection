@@ -15,7 +15,7 @@ import json
 
 from scheduler import adjust_learning_rate, WarmUpScheduler
 from models import model_entry
-from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset
+from dataset.Datasets import PascalVOCDataset, COCO17Dataset, BaseModelVOCOCODataset, TrafficDataset
 from utils import create_logger, save_checkpoint
 from models.utils import detect, detect_focal
 from metrics import AverageMeter, calculate_mAP
@@ -101,7 +101,7 @@ def main():
             for param_tensor in init_model.state_dict().keys():
                 # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
                 #         or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
-                if param_tensor.startswith('nnfm') or param_tensor.startswith('base.'):
+                if param_tensor.startswith('aux_convs') or param_tensor.startswith('base.'):
                     reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
                     print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
             model.load_state_dict(reuse_layers, strict=False)
@@ -152,6 +152,15 @@ def main():
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = BaseModelVOCOCODataset(val_data_folder, split='val', config=config)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
+                                                  collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                                  pin_memory=False)
+    elif config.data_name.upper() == 'TRAFFIC':
+        train_dataset = TrafficDataset(train_data_folder, split='train', config=config)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
+                                                   collate_fn=train_dataset.collate_fn, num_workers=workers,
+                                                   pin_memory=True, drop_last=True)
+        test_dataset = TrafficDataset(val_data_folder, split='val', config=config)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
@@ -340,7 +349,7 @@ def evaluate(test_loader, model, optimizer, config):
             time_start = time.time()
             predicted_locs, predicted_scores = model(images)
 
-            if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO':
+            if config.data_name.upper() == 'COCO' or config.data_name.upper() == 'VOCOCO' or config.data_name.upper() == 'TRAFFIC':
                 if config['focal_type'].lower() == 'sigmoid':
                     det_boxes_batch, det_labels_batch, det_scores_batch = \
                         detect_focal(predicted_locs,
