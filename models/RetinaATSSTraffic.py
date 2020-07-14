@@ -94,8 +94,8 @@ class RegressionModel(nn.Module):
         self.gn3 = nn.GroupNorm(32, feature_size)
         # self.act3 = nn.ReLU()
 
-        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        # self.gn4 = nn.GroupNorm(32, feature_size)
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
@@ -121,8 +121,8 @@ class RegressionModel(nn.Module):
         out = self.gn3(self.conv3(out))
         out = self.act(out)
 
-        # out = self.gn4(self.conv4(out))
-        # out = self.act(out)
+        out = self.gn4(self.conv4(out))
+        out = self.act(out)
 
         out = self.output(out)
 
@@ -149,8 +149,8 @@ class ClassificationModel(nn.Module):
         self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.gn3 = nn.GroupNorm(32, feature_size)
 
-        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        # self.gn4 = nn.GroupNorm(32, feature_size)
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.gn4 = nn.GroupNorm(32, feature_size)
         self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
@@ -177,8 +177,8 @@ class ClassificationModel(nn.Module):
         out = self.gn3(self.conv3(out))
         out = self.act(out)
 
-        # out = self.gn4(self.conv4(out))
-        # out = self.act(out)
+        out = self.gn4(self.conv4(out))
+        out = self.act(out)
 
         out = self.output(out)
         # out = self.output_act(out)

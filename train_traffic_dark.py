@@ -319,7 +319,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
     config.tb_logger.add_scalar('training_loss', losses.avg, epoch)
 
-    del predicted_locs, predicted_scores, images, boxes, labels, ignored_regions
+    del predicted_locs, predicted_scores, images, boxes, labels
 
 
 def evaluate(test_loader, model, criterion, config):
