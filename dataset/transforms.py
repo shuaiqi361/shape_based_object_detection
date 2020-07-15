@@ -435,19 +435,19 @@ def transform_init(image, boxes, labels, split, config):
         # new_image = unify_size(new_image)
 
         # Convert PIL image to Torch tensor
-        # new_image = FT.to_tensor(new_image)
+        new_image = FT.to_tensor(new_image)
 
         # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
         # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
-        # if random.random() < 0.25 and 'expand' in operation_list:
-        #     new_image, new_boxes = expand(new_image, boxes, filler=mean)
+        if random.random() < 0.2 and 'expand' in operation_list:
+            new_image, new_boxes = expand(new_image, boxes, filler=mean)
 
         # Randomly crop image (zoom in)
         # if random.random() < 0.25 and 'random_crop' in operation_list:
         #     new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
 
         # Convert Torch tensor to PIL image
-        # new_image = FT.to_pil_image(new_image)
+        new_image = FT.to_pil_image(new_image)
         # Flip image with a 50% chance
         if random.random() < 0.5:
             new_image, new_boxes = flip(new_image, new_boxes)
