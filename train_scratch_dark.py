@@ -98,10 +98,14 @@ def main():
             checkpoint = torch.load(args.load_path, map_location=config.device)
             init_model = checkpoint['model']
             reuse_layers = {}
+            # print(len(init_model.state_dict().keys()))
+            # print(init_model.state_dict().keys())
+            # exit()
             for param_tensor in init_model.state_dict().keys():
                 # if param_tensor.startswith('aux_convs.') or param_tensor.startswith('arm_convs.') \
                 #         or param_tensor.startswith('tcb_convs.') or param_tensor.startswith('base.'):
-                if param_tensor.startswith('aux_convs') or param_tensor.startswith('base.') or param_tensor.startswith('fpn.'):
+                if param_tensor.startswith('aux_convs') or param_tensor.startswith('base.') or param_tensor.startswith('fpn.')\
+                        or param_tensor.startswith('conv1') or param_tensor.startswith('bn1') or param_tensor.startswith('layer'):
                     reuse_layers[param_tensor] = init_model.state_dict()[param_tensor]
                     print("Reusing:", param_tensor, "\t", init_model.state_dict()[param_tensor].size())
             model.load_state_dict(reuse_layers, strict=False)
