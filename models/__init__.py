@@ -17,6 +17,7 @@ from .ATSSNETDet import ATSSNETNetDetector, ATSSNETNetDetectorLoss
 from .ATSS_SSD import ATSSSSD512, ATSSSSD512Loss
 from .RetinaATSS import RetinaATSS34, RetinaATSS50, RetinaATSS101, RetinaATSSNetLoss
 from .RetinaATSSTraffic import RetinaATSS50Traffic, RetinaATSSNetTrafficLoss
+from .RetinaNetTraffic import RetinaNet50Traffic, RetinaNet101Traffic, RetinaTrafficFocalLoss
 
 
 def model_entry(config):
@@ -83,6 +84,9 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'RETINAATSS50TRAFFIC':
         print('Loading ATSS RetinaNet Traffic Detector ......')
         return RetinaATSS50Traffic(config['n_classes'], config=config), RetinaATSSNetTrafficLoss
+    elif config.model['arch'].upper() == 'RETINA50TRAFFIC':
+        print('Loading RetinaNet Traffic Detector ......')
+        return RetinaNet50Traffic(config['n_classes'], config=config), RetinaTrafficFocalLoss
     else:
         print('Try other models.')
         raise NotImplementedError

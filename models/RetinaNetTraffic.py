@@ -92,8 +92,8 @@ class RegressionModel(nn.Module):
         self.gn3 = nn.GroupNorm(32, feature_size)
         # self.act3 = nn.ReLU()
 
-        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(32, feature_size)
+        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        # self.gn4 = nn.GroupNorm(32, feature_size)
         self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
@@ -130,8 +130,8 @@ class RegressionModel(nn.Module):
         out = self.gn3(self.conv3(out))
         out = self.act(out)
 
-        out = self.gn4(self.conv4(out))
-        out = self.act(out)
+        # out = self.gn4(self.conv4(out))
+        # out = self.act(out)
 
         out = self.output(out)
 
@@ -160,9 +160,9 @@ class ClassificationModel(nn.Module):
         self.gn3 = nn.GroupNorm(32, feature_size)
         # self.act3 = nn.ReLU()
 
-        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(32, feature_size)
-        self.act = nn.ReLU()
+        # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        # self.gn4 = nn.GroupNorm(32, feature_size)
+        self.act = nn.ReLU(inplace=True)
 
         self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
         # self.output_act = nn.Sigmoid()
@@ -188,8 +188,8 @@ class ClassificationModel(nn.Module):
         out = self.gn3(self.conv3(out))
         out = self.act(out)
 
-        out = self.gn4(self.conv4(out))
-        out = self.act(out)
+        # out = self.gn4(self.conv4(out))
+        # out = self.act(out)
 
         out = self.output(out)
         # out = self.output_act(out)
@@ -282,11 +282,11 @@ class RetinaNet(nn.Module):
         Create the anchor boxes as in RetinaNet
         :return: prior boxes in center-size coordinates
         """
-        fmap_dims = {'c3': [64, 64],
-                     'c4': [32, 32],
-                     'c5': [16, 16],
-                     'c6': [8, 8],
-                     'c7': [4, 4]}
+        fmap_dims = {'c3': [68, 120],
+                     'c4': [34, 60],
+                     'c5': [17, 30],
+                     'c6': [9, 15],
+                     'c7': [5, 8]}
 
         obj_scales = {'c3': 0.04,
                       'c4': 0.08,
@@ -369,7 +369,7 @@ class RetinaNet(nn.Module):
         return locs, class_scores
 
 
-class RetinaFocalLoss(nn.Module):
+class RetinaTrafficFocalLoss(nn.Module):
     """
     The RetinaFocalLoss, a loss function for object detection from RetinaNet.
     This is a combination of:
@@ -378,7 +378,7 @@ class RetinaFocalLoss(nn.Module):
     """
 
     def __init__(self, priors_cxcy, config, threshold=0.5, neg_pos_ratio=3):
-        super(RetinaFocalLoss, self).__init__()
+        super(RetinaTrafficFocalLoss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = cxcy_to_xy(priors_cxcy)
         self.threshold = threshold
@@ -389,7 +389,7 @@ class RetinaFocalLoss(nn.Module):
         self.config = config
 
         self.smooth_l1 = SmoothL1Loss(reduction='mean')
-        self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
+        self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
         # self.Focal_loss = FocalLoss()
         # self.Focal_loss = focal_loss
@@ -525,7 +525,7 @@ class RetinaFocalLoss(nn.Module):
         return conf_loss + self.alpha * loc_loss
 
 
-def resnet50(num_classes, config, pretrained=True, **kwargs):
+def RetinaNet50Traffic(num_classes, config, pretrained=True, **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -539,7 +539,7 @@ def resnet50(num_classes, config, pretrained=True, **kwargs):
     return model
 
 
-def resnet101(num_classes, config, pretrained=True, **kwargs):
+def RetinaNet101Traffic(num_classes, config, pretrained=True, **kwargs):
     """Constructs a ResNet-101 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
