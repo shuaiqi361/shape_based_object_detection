@@ -433,17 +433,17 @@ class ATSSSSD512(nn.Module):
         #              'conv8_2': [10, 10],
         #              'conv9_2': [5, 5],
         #              'conv10_2': [3, 3]}
-        fmap_dims = {'conv4_3': [45, 80],
-                     'conv7': [22, 40],
-                     'conv8_2': [11, 20],
-                     'conv9_2': [6, 10],
-                     'conv10_2': [3, 5]}
+        fmap_dims = {'conv4_3': [68, 120],
+                     'conv7': [34, 60],
+                     'conv8_2': [17, 30],
+                     'conv9_2': [9, 15],
+                     'conv10_2': [5, 8]}
 
-        obj_scales = {'conv4_3': 0.08,
-                      'conv7': 0.16,
-                      'conv8_2': 0.32,
-                      'conv9_2': 0.48,
-                      'conv10_2': 0.64}
+        obj_scales = {'conv4_3': 0.05,
+                      'conv7': 0.1,
+                      'conv8_2': 0.2,
+                      'conv9_2': 0.4,
+                      'conv10_2': 0.6}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
@@ -482,7 +482,7 @@ class ATSSSSD512Loss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, n_candidates=9):
+    def __init__(self, priors_cxcy, config, n_candidates=13):
         super(ATSSSSD512Loss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
@@ -492,8 +492,7 @@ class ATSSSSD512Loss(nn.Module):
         self.n_candidates = n_candidates
 
         # self.prior_split_points = [0, 1444, 1805, 1905, 1930, 1939]
-        self.prior_split_points = [0, 45 * 80, 45 * 80 + 22 * 40, 45 * 80 + 22 * 40 + 11 * 20,
-        45 * 80 + 22 * 40 + 11 * 20 + 6 * 10, 45 * 80 + 22 * 40 + 11 * 20 + 60 + 3 * 5]
+        self.prior_split_points = [0, 8160, 10200, 10710, 10845, 10885]
         self.regression_loss = SmoothL1Loss(reduction='mean')
         # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
@@ -611,8 +610,8 @@ class ATSSSSD512Loss(nn.Module):
                         # print(current_iou, iou_threshold[ob], current_bbox, current_prior)
 
                         if current_iou > iou_threshold[ob]:
-                            if current_bbox[0] <= current_prior[0] <= current_bbox[2] \
-                                    and current_bbox[1] <= current_prior[1] <= current_bbox[3]:
+                            if current_bbox[0] < current_prior[0] < current_bbox[2] \
+                                    and current_bbox[1] < current_prior[1] < current_bbox[3]:
                                 # print('------------------------------------------------------------------')
                                 positive_priors_per_level[ob, positive_samples_idx[level][ob, c]] = 1
                                 # if current_iou == overlap_for_each_prior[positive_samples_idx[level][ob, c]]:
@@ -634,7 +633,7 @@ class ATSSSSD512Loss(nn.Module):
                     gcxgcy_to_cxcy(batch_split_predicted_locs[level], self.priors_cxcy[level]))
 
                 for c in range(positive_samples_idx[level].size(1)):
-                    current_max_iou = -1.
+                    current_max_iou = 0.
                     current_max_iou_ob = -1
                     for ob in range(image_bboxes.size(0)):
                         # print(positive_samples_idx[level].size(1), 'positive_priors_per_level shape: ', positive_priors_per_level.size())
