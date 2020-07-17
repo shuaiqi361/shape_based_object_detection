@@ -10,13 +10,14 @@ import torch
 import json
 import time
 import numpy as np
-from detect_scripts.detect_tools import detect
+from detect_scripts.detect_tools import detect, detect_focal
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+COCO_traffic = {'bus': 6, 'car': 3, 'truck': 8}
 
 # Transforms
 resize = transforms.Resize((540, 960))
-# resize = transforms.Resize((300, 300))
+# resize = transforms.Resize((512, 512))
 
 to_tensor = transforms.ToTensor()
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -33,11 +34,12 @@ def hex_to_rgb(value):
     return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
-root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/Dark_attention_001'
+root_path = '/home/keyi/Documents/research/code/shape_based_object_detection/experiment/ATSSSSD_traffic_002'
 folder_path = '/home/keyi/Documents/Data/DETRAC/Insight-MVT_Annotation_Test'
-model_path = os.path.join(root_path, 'snapshots/darktrafficattention_detrac_checkpoint_epoch-10.pth.tar')
+model_path = os.path.join(root_path, 'snapshots/atssssd_traffic_checkpoint_epoch-7.pth.tar')
 
-meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC/label_map.json'
+meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/DETRAC_bin/label_map.json'
+# meta_data_path = '/home/keyi/Documents/research/code/shape_based_object_detection/data/COCO/label_map.json'
 output_path = os.path.join(root_path, 'live_results/DETRAC')
 output_file_flag = True
 output_video_flag = True
@@ -57,7 +59,8 @@ def detect_folder(folder_path, model_path, meta_data_path):
     with open(meta_data_path, 'r') as j:
         traffic_label_map = json.load(j)
     rev_traffic_label_map = {v: k for k, v in traffic_label_map.items()}
-    label_color_map = {k: distinct_colors[i] for i, k in enumerate(traffic_label_map.keys())}
+    # print(rev_traffic_label_map)
+    # label_color_map = {k: distinct_colors[i] for i, k in enumerate(traffic_label_map.keys())}
 
     # load video
     if not os.path.exists(folder_path):
@@ -72,8 +75,8 @@ def detect_folder(folder_path, model_path, meta_data_path):
 
     video_out = cv2.VideoWriter(os.path.join(output_path, folder_name + '.mkv'),
                                 cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
-    video_out_mask = cv2.VideoWriter(os.path.join(output_path, folder_name + '_mask.mkv'),
-                                     cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
+    # video_out_mask = cv2.VideoWriter(os.path.join(output_path, folder_name + '_mask.mkv'),
+    #                                  cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
 
     output_file = os.path.join(output_path, folder_name + '_Det.txt')
     if output_file is not None:
@@ -83,31 +86,31 @@ def detect_folder(folder_path, model_path, meta_data_path):
     frame_list = os.listdir(folder_path)
     n_frames = len(frame_list)
     for frame_id in range(n_frames):
-        if frame_id >= 250:
-            exit()
+        # if frame_id >= 250:
+        #     exit()
         frame_name = 'img{:05d}.jpg'.format(frame_id + 1)
         frame_path = os.path.join(folder_path, frame_name)
         print("Processing frame: ", frame_id, frame_path)
         frame = cv2.resize(cv2.imread(frame_path), dsize=(width, height))
 
-        # annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.25, 0.4, 200,
-        #                                                         rev_traffic_label_map, label_color_map)
+        annotated_image, time_pframe, frame_info_list = detect_image(frame, model, 0.15, 0.45, 200,
+                                                                     rev_traffic_label_map)
 
-        annotated_image, time_pframe, frame_info_list, mask = detect_image(frame, model, 0.25, 0.4, 200,
-                                                                           rev_traffic_label_map, label_color_map)
+        # annotated_image, time_pframe, frame_info_list, mask = detect_image(frame, model, 0.25, 0.4, 200,
+        #                                                                    rev_traffic_label_map, label_color_map)
         speed_list.append(time_pframe)
 
         video_out.write(annotated_image)
 
-        aligned_mask = cv2.resize(np.floor((mask * 255.)).astype(np.uint8), dsize=(width, height))
+        # aligned_mask = cv2.resize(np.floor((mask * 255.)).astype(np.uint8), dsize=(width, height))
         # aligned_mask = mask.copy()
-        video_out_mask.write(aligned_mask)
+        # video_out_mask.write(aligned_mask)
         for k in range(len(frame_info_list)):
             f_out.write(str(frame_id + 1) + frame_info_list[k])
 
         frame_id += 1
         cv2.imshow('frame detect', annotated_image)
-        cv2.imshow('aligned mask', aligned_mask)
+        # cv2.imshow('aligned mask', aligned_mask)
         # print(str(frame_id) + frame_info)
         # cv2.waitKey()
         # exit()
@@ -119,7 +122,7 @@ def detect_folder(folder_path, model_path, meta_data_path):
     print('Video configuration: \nresolution:{}x{}, fps:{}'.format(width, height, fps))
 
 
-def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map, label_color_map):
+def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map, label_color_map=None):
     # Transform
     image_for_detect = frame.copy()
     img = cv2.cvtColor(image_for_detect, cv2.COLOR_BGR2RGB)
@@ -131,21 +134,27 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
 
     # Forward prop.
     start = time.time()
-    # predicted_locs, predicted_scores = model(image.unsqueeze(0))
-    predicted_locs, predicted_scores, attention_map = model(image.unsqueeze(0))
+    predicted_locs, predicted_scores = model(image.unsqueeze(0))
+    # predicted_locs, predicted_scores, attention_map = model(image.unsqueeze(0))
     # _, _, _, _, predicted_locs, predicted_scores, prior_positives_idx = model(image.unsqueeze(0))
 
     # Detect objects in SSD output
-    det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
-                                               max_overlap=max_overlap, top_k=top_k,
-                                               priors_cxcy=model.priors_cxcy, final_nms=True)
+    # det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
+    #                                            max_overlap=max_overlap, top_k=top_k,
+    #                                            priors_cxcy=model.priors_cxcy, final_nms=True)
     # det_boxes, det_labels, det_scores = detect(predicted_locs, predicted_scores, min_score=min_score,
     #                                            max_overlap=max_overlap, top_k=top_k,
     #                                            priors_cxcy=model.priors_cxcy, prior_positives_idx=prior_positives_idx,
     #                                            final_nms=True)
+    det_boxes, det_labels, det_scores = detect_focal(predicted_locs, predicted_scores, min_score=min_score,
+                                               max_overlap=max_overlap, top_k=top_k,
+                                               priors_cxcy=model.priors_cxcy, final_nms=True)
     stop = time.time()
     # Move detections to the CPU
     det_boxes_percentage = det_boxes[0].to('cpu')
+    # print(len(det_labels))
+    # print(det_labels)
+    # exit()
 
     # Transform to original image dimensions
     original_dims = torch.FloatTensor(
@@ -167,11 +176,17 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
     frame_info_list = []
     for i in range(len(det_labels)):
         # Boxes
+        # if det_labels[i] not in COCO_traffic.keys():
+        #     continue
+
         box_location = det_boxes[i].tolist()
-        box_coordinates = det_boxes_percentage[i].tolist()
+        # box_coordinates = det_boxes_percentage[i].tolist()
+        # cv2.rectangle(annotated_image, pt1=(int(box_location[0]), int(box_location[1])),
+        #               pt2=(int(box_location[2]), int(box_location[3])),
+        #               color=hex_to_rgb(label_color_map[det_labels[i]]), thickness=2)
         cv2.rectangle(annotated_image, pt1=(int(box_location[0]), int(box_location[1])),
                       pt2=(int(box_location[2]), int(box_location[3])),
-                      color=hex_to_rgb(label_color_map[det_labels[i]]), thickness=2)
+                      color=(0, 255, 0), thickness=2)
 
         # Text
         # text = det_labels[i].upper()
@@ -199,9 +214,9 @@ def detect_image(frame, model, min_score, max_overlap, top_k, reverse_label_map,
 
     # when attention mask is available
     # print(attention_map.size())
-    mask = np.repeat(attention_map[0].permute(1, 2, 0).detach().cpu().numpy(), 3, axis=2)
+    # mask = np.repeat(attention_map[0].permute(1, 2, 0).detach().cpu().numpy(), 3, axis=2)
 
-    return annotated_image, - start + stop, frame_info_list, mask
+    return annotated_image, - start + stop, frame_info_list  # , mask
 
 
 def print_help():
