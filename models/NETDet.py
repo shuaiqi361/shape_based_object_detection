@@ -67,6 +67,7 @@ class VGGBase(nn.Module):
         out = F.relu(self.conv3_1(out))  # (N, 256, 75, 75) 90, 160
         out = F.relu(self.conv3_2(out))  # (N, 256, 75, 75)
         out = F.relu(self.conv3_3(out))  # (N, 256, 75, 75)
+        conv3_3_feats = out
         out = self.pool3(out)  # (N, 256, 38, 38), it would have been 37 if not for ceil_mode = True
 
         out = F.relu(self.conv4_1(out))  # (N, 512, 38, 38) 45, 80
@@ -86,7 +87,7 @@ class VGGBase(nn.Module):
 
         # Lower-level feature maps
         # print(conv4_3_feats.size(), conv7_feats.size())
-        return conv4_3_feats, conv7_feats
+        return conv3_3_feats, conv4_3_feats, conv7_feats
 
     def load_pretrained_layers(self):
         """
@@ -158,10 +159,10 @@ class AuxiliaryConvolutions(nn.Module):
         self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
         self.conv11_2_gn = nn.GroupNorm(16, 256)
 
-        self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1)
-        self.conv12_1_gn = nn.GroupNorm(16, 128)
-        self.conv12_2 = nn.Conv2d(128, 256, kernel_size=2)
-        self.conv12_2_gn = nn.GroupNorm(16, 256)
+        # self.conv12_1 = nn.Conv2d(256, 128, kernel_size=1)
+        # self.conv12_1_gn = nn.GroupNorm(16, 128)
+        # self.conv12_2 = nn.Conv2d(128, 256, kernel_size=2)
+        # self.conv12_2_gn = nn.GroupNorm(16, 256)
 
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -199,13 +200,13 @@ class AuxiliaryConvolutions(nn.Module):
         out = F.relu(self.conv11_2_gn(self.conv11_2(out)))
         conv11_2_feats = out  # (N, 256, 1, 1)
 
-        out = F.relu(self.conv12_1_gn(self.conv12_1(out)))
-        out = F.relu(self.conv12_2_gn(self.conv12_2(out)))
-        conv12_2_feats = out  # (N, 256, 1, 1)
+        # out = F.relu(self.conv12_1_gn(self.conv12_1(out)))
+        # out = F.relu(self.conv12_2_gn(self.conv12_2(out)))
+        # conv12_2_feats = out  # (N, 256, 1, 1)
 
         # Higher-level feature maps
         # print(conv8_2_feats.size(), conv9_2_feats.size(), conv10_2_feats.size(), conv11_2_feats.size())
-        return conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats, conv12_2_feats
+        return conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats  # , conv12_2_feats
 
 
 class NearestNeighborFusionModule(nn.Module):
@@ -253,6 +254,7 @@ class NearestNeighborFusionModule(nn.Module):
         current_feats = self.mish(self.current_gn(self.current_conv(current_feats)))
         # next_feats = self.mish(self.up_gn(self.up_conv(self.mish(self.up_sample_gn(self.up_sample(next_feats))))))
         next_feats = self.mish(self.up_gn(self.up_conv(self.up_sample(next_feats))))
+        # print(prev_feats.size(), current_feats.size(), next_feats.size())
 
         return prev_feats + current_feats + next_feats
 
@@ -361,10 +363,10 @@ class DetectorConvolutions(nn.Module):
                    'DB7': 3,
                    'DB8': 3}
 
-        self.feat_channels = {'DB2': 512,
-                              'DB3': 1024,
-                              'DB4': 512,
-                              'DB5': 256,
+        self.feat_channels = {'DB2': 256,
+                              'DB3': 512,
+                              'DB4': 1024,
+                              'DB5': 512,
                               'DB6': 256,
                               'DB7': 256,
                               'DB8': 256}
@@ -464,6 +466,7 @@ class DetectorConvolutions(nn.Module):
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
         locs = torch.cat([l_conv3, l_conv4, l_conv5, l_conv6, l_conv7, l_conv8], dim=1).contiguous()
         classes_scores = torch.cat([c_conv3, c_conv4, c_conv5, c_conv6, c_conv7, c_conv8], dim=1).contiguous()
+        # print('predictions: ', locs.size(), classes_scores.size())
 
         return locs, classes_scores
 
@@ -479,18 +482,18 @@ class VGGNETNetDetector(nn.Module):
         self.n_classes = n_classes - 1
         self.prior = prior
 
-        self.feat_channels = {'DB2': 512,
-                              'DB3': 1024,
-                              'DB4': 512,
-                              'DB5': 256,
+        self.feat_channels = {'DB2': 256,
+                              'DB3': 512,
+                              'DB4': 1024,
+                              'DB5': 512,
                               'DB6': 256,
                               'DB7': 256,
                               'DB8': 256}
 
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
-        self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 256, 1, 1))
+        nn.init.constant_(self.rescale_factors_conv4_3, 10.)
 
         self.nnfm_1 = NearestNeighborFusionModule([self.feat_channels['DB2'], self.feat_channels['DB3'],
                                                    self.feat_channels['DB4']], 256)
@@ -531,14 +534,13 @@ class VGGNETNetDetector(nn.Module):
         """
         # Run VGG base network convolutions (lower level feature map generators)
         # p_0, p_1, p_2, p_3, p_4, p_5, p_6 = self.base(image)
-        p_0, p_1 = self.base(image)
+        p_0, p_1, p_2 = self.base(image)
         norm = p_0.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 64, 64)
         p_0 = p_0 / norm  # (N, 512, 64, 64)
         p_0 = p_0 * self.rescale_factors_conv4_3  # (N, 512, 64, 64)
 
         # Run auxiliary convolutions (higher level feature map generators)
-        p_2, p_3, p_4, p_5, p_6 = \
-            self.aux_convs(p_1)
+        p_3, p_4, p_5, p_6 = self.aux_convs(p_2)
 
         nn_feat1 = self.nnfm_1(p_0, p_1, p_2)
         nn_feat2 = self.nnfm_2(p_1, p_2, p_3)
@@ -549,6 +551,7 @@ class VGGNETNetDetector(nn.Module):
         dh2, dh4 = self.netm_2(nn_feat2, nn_feat4)
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each resulting localization box)
+        # print(dh1.size(), dh2.size(), dh3.size(), dh4.size(), p_5.size(), p_6.size())
         locs, scores = self.detect_convs(dh1, dh2, dh3, dh4, p_5, p_6)
 
         return locs, scores
@@ -559,12 +562,12 @@ class VGGNETNetDetector(nn.Module):
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
         """
-        fmap_dims = {'DB3': [100, 100],
-                     'DB4': [50, 50],
-                     'DB5': [25, 25],
-                     'DB6': [13, 13],
-                     'DB7': [7, 7],
-                     'DB8': [4, 4]}
+        fmap_dims = {'DB3': [96, 96],
+                     'DB4': [48, 48],
+                     'DB5': [24, 24],
+                     'DB6': [12, 12],
+                     'DB7': [6, 6],
+                     'DB8': [3, 3]}
 
         obj_scales = {'DB3': 0.035,
                       'DB4': 0.07,
@@ -598,6 +601,7 @@ class VGGNETNetDetector(nn.Module):
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(self.device).contiguous()
         prior_boxes.clamp_(0, 1)
+        # print('Priors: ', prior_boxes.size())
 
         return prior_boxes
 
