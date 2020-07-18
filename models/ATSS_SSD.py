@@ -658,8 +658,8 @@ class ATSSSSD512Loss(nn.Module):
                 total_decoded_locs = cxcy_to_xy(
                     gcxgcy_to_cxcy(batch_split_predicted_locs[level], self.priors_cxcy[level]))
 
-                # for c in range(positive_samples_idx[level].size(1)):
-                for c in range(self.priors_cxcy[level].size(0)):  # loop over each prior in each level
+                for c in range(positive_samples_idx[level].size(1)):
+                # for c in range(self.priors_cxcy[level].size(0)):  # loop over each prior in each level
                     current_max_iou = 0.
                     current_max_iou_ob = -1  # index for rows: (n_ob, n_prior)
                     for ob in range(image_bboxes.size(0)):
@@ -667,11 +667,11 @@ class ATSSSSD512Loss(nn.Module):
                         # print('positive_priors size per level:', positive_priors[level].size())
                         # print(ob)
                         # print(positive_samples_idx[level][ob, c])
-                        # if positive_priors[level][ob, positive_samples_idx[level][ob, c]] == 1:
-                        if positive_priors[level][ob, c] == 1:
-                            if overlap[level][ob, c] > current_max_iou:
+                        if positive_priors[level][ob, positive_samples_idx[level][ob, c]] == 1:
+                        # if positive_priors[level][ob, c] == 1:
+                            if overlap[level][ob, positive_samples_idx[level][ob, c]] > current_max_iou:
                                 current_max_iou_ob = ob
-                                current_max_iou = overlap[level][ob, c]
+                                current_max_iou = overlap[level][ob, positive_samples_idx[level][ob, c]]
 
                     # if current_max_iou_ob > -1 and current_max_iou > 0. and label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] == 0:
                     if current_max_iou_ob > -1 and current_max_iou > 0.:
@@ -715,10 +715,10 @@ class ATSSSSD512Loss(nn.Module):
         # print('Final stored values:')
         # print(true_locs.size(), true_classes.size())
         # print(decoded_locs.size(), predicted_scores.size())
-        # print('true locs:', true_locs[:15, :])
-        # print('true classes:', true_classes[0:1000])
+        # # print('true locs:', true_locs[:15, :])
+        # # print('true classes:', true_classes[0:1000])
         # print('Number of positive priors:', (true_classes > 0).sum().float())
-        # print(decoded_locs[:15, :])
+        # # print(decoded_locs[:15, :])
         #
         # exit()
 
