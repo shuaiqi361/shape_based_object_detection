@@ -54,8 +54,8 @@ class SigmoidFocalLoss(nn.Module):
         ).unsqueeze(0)
         # print(class_ids.size())
 
-        t = target.unsqueeze(1)  # background class has label -1
-        p = torch.sigmoid(out).clamp(min=1e-6, max=1-1e-6)
+        t = target.unsqueeze(1)
+        p = torch.sigmoid(out).clamp(min=1e-7, max=1-1e-7)
         # p = torch.sigmoid(out[:, 1:]).clamp(min=1e-5, max=1-1e-5)  # excluding the background class
 
         gamma = self.gamma
