@@ -140,13 +140,19 @@ class AuxiliaryConvolutions(nn.Module):
         super(AuxiliaryConvolutions, self).__init__()
 
         self.conv8_1 = nn.Conv2d(1024, 256, kernel_size=1, padding=0)  # stride = 1, by default
+        self.conv8_1_gn = nn.GroupNorm(16, 256)
         self.conv8_2 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
+        self.conv8_2_gn = nn.GroupNorm(16, 512)
 
         self.conv9_1 = nn.Conv2d(512, 128, kernel_size=1, padding=0)
+        self.conv9_1_gn = nn.GroupNorm(16, 128)
         self.conv9_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)  # dim. reduction because stride > 1
+        self.conv9_2_gn = nn.GroupNorm(16, 256)
 
         self.conv10_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
+        self.conv10_1_gn = nn.GroupNorm(16, 128)
         self.conv10_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
+        self.conv10_2_gn = nn.GroupNorm(16, 256)
 
         # self.conv11_1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
         # self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
@@ -174,16 +180,16 @@ class AuxiliaryConvolutions(nn.Module):
         :param conv7_feats: lower-level conv7 feature map, a tensor of dimensions (N, 1024, 19, 19)
         :return: higher-level feature maps conv8_2, conv9_2, conv10_2, and conv11_2
         """
-        out = F.relu(self.conv8_1(conv7_feats))  # (N, 256, 16, 16)
-        out = F.relu(self.conv8_2(out))  # (N, 512, 10, 10)
+        out = F.relu(self.conv8_1_gn(self.conv8_1(conv7_feats)))  # (N, 256, 16, 16)
+        out = F.relu(self.conv8_2_gn(self.conv8_2(out)))  # (N, 512, 10, 10)
         conv8_2_feats = out  # (N, 512, 10, 10)
 
-        out = F.relu(self.conv9_1(out))  # (N, 128, 8, 8)
-        out = F.relu(self.conv9_2(out))  # (N, 256, 5, 5)
+        out = F.relu(self.conv9_1_gn(self.conv9_1(out)))  # (N, 128, 8, 8)
+        out = F.relu(self.conv9_2_gn(self.conv9_2(out)))  # (N, 256, 5, 5)
         conv9_2_feats = out  # (N, 256, 5, 5)
 
-        out = F.relu(self.conv10_1(out))  # (N, 128, 4, 4)
-        out = F.relu(self.conv10_2(out))  # (N, 256, 3, 3)
+        out = F.relu(self.conv10_1_gn(self.conv10_1(out)))  # (N, 128, 4, 4)
+        out = F.relu(self.conv10_2_gn(self.conv10_2(out)))  # (N, 256, 3, 3)
         conv10_2_feats = out  # (N, 256, 3, 3)
 
         # out = F.relu(self.conv11_1(out))  # (N, 128, 2, 2)
@@ -433,17 +439,17 @@ class ATSSSSD512(nn.Module):
         #              'conv8_2': [10, 10],
         #              'conv9_2': [5, 5],
         #              'conv10_2': [3, 3]}
-        fmap_dims = {'conv4_3': [68, 120],
-                     'conv7': [34, 60],
-                     'conv8_2': [17, 30],
-                     'conv9_2': [9, 15],
-                     'conv10_2': [5, 8]}
+        fmap_dims = {'conv4_3': [100, 100],
+                     'conv7': [50, 50],
+                     'conv8_2': [25, 25],
+                     'conv9_2': [13, 13],
+                     'conv10_2': [7, 7]}
 
         obj_scales = {'conv4_3': 0.05,
                       'conv7': 0.1,
                       'conv8_2': 0.2,
                       'conv9_2': 0.4,
-                      'conv10_2': 0.6}
+                      'conv10_2': 0.8}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
@@ -482,7 +488,7 @@ class ATSSSSD512Loss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, n_candidates=13):
+    def __init__(self, priors_cxcy, config, n_candidates=9):
         super(ATSSSSD512Loss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
@@ -491,8 +497,18 @@ class ATSSSSD512Loss(nn.Module):
         self.n_classes = config.n_classes - 1
         self.n_candidates = n_candidates
 
+        fmap_dims = {'conv4_3': [100, 100],
+                     'conv7': [50, 50],
+                     'conv8_2': [25, 25],
+                     'conv9_2': [13, 13],
+                     'conv10_2': [7, 7]}
+        self.prior_split_points = [0]
+        for _, dims in fmap_dims.items():
+            self.prior_split_points.append(self.prior_split_points[-1] + dims[0] * dims[1])
+
         # self.prior_split_points = [0, 1444, 1805, 1905, 1930, 1939]
-        self.prior_split_points = [0, 8160, 10200, 10710, 10845, 10885]
+        # self.prior_split_points = [0, 8160, 10200, 10710, 10845, 10885]
+        # self.prior_split_points = [0, 10000, 12500, 13125, 13294, 13343]
         self.regression_loss = SmoothL1Loss(reduction='mean')
         # self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
