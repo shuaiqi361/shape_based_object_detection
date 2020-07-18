@@ -439,6 +439,11 @@ class ATSSSSD512(nn.Module):
         #              'conv8_2': [10, 10],
         #              'conv9_2': [5, 5],
         #              'conv10_2': [3, 3]}
+        # fmap_dims = {'conv4_3': [90, 90],
+        #              'conv7': [45, 45],
+        #              'conv8_2': [23, 23],
+        #              'conv9_2': [12, 12],
+        #              'conv10_2': [6, 6]}
         fmap_dims = {'conv4_3': [100, 100],
                      'conv7': [50, 50],
                      'conv8_2': [25, 25],
@@ -664,9 +669,9 @@ class ATSSSSD512Loss(nn.Module):
                         # print(positive_samples_idx[level][ob, c])
                         # if positive_priors[level][ob, positive_samples_idx[level][ob, c]] == 1:
                         if positive_priors[level][ob, c] == 1:
-                            if positive_overlaps[level][ob, c] > current_max_iou:
+                            if overlap[level][ob, c] > current_max_iou:
                                 current_max_iou_ob = ob
-                                current_max_iou = positive_overlaps[level][ob, c]
+                                current_max_iou = overlap[level][ob, c]
 
                     # if current_max_iou_ob > -1 and current_max_iou > 0. and label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] == 0:
                     if current_max_iou_ob > -1 and current_max_iou > 0.:
@@ -707,15 +712,15 @@ class ATSSSSD512Loss(nn.Module):
         true_locs = torch.cat(true_locs, dim=0)
         decoded_locs = torch.cat(decoded_locs, dim=0)
 
-        print('Final stored values:')
-        print(true_locs.size(), true_classes.size())
-        print(decoded_locs.size(), predicted_scores.size())
-        print('true locs:', true_locs[:15, :])
-        print('true classes:', true_classes[0:1000])
-        print('Number of positive priors:', (true_classes > 0).sum().float())
-        print(decoded_locs[:15, :])
-
-        exit()
+        # print('Final stored values:')
+        # print(true_locs.size(), true_classes.size())
+        # print(decoded_locs.size(), predicted_scores.size())
+        # print('true locs:', true_locs[:15, :])
+        # print('true classes:', true_classes[0:1000])
+        # print('Number of positive priors:', (true_classes > 0).sum().float())
+        # print(decoded_locs[:15, :])
+        #
+        # exit()
 
         # LOCALIZATION LOSS
         loc_loss = self.regression_loss(decoded_locs, true_locs)

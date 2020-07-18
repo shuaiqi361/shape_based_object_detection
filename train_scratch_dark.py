@@ -206,8 +206,8 @@ def main():
 
     epochs = iterations // (len(train_dataset) // config.batch_size)
 
-    print('total train epochs: ', epochs, ' training starts ......')
-    str_print = 'Dataset size: {}'.format(len(train_dataset))
+    # print('total train epochs: ', epochs, ' training starts ......')
+    str_print = 'Total training epochs: {}, dataset size: {}, training starts ......'.format(epochs, len(train_dataset))
     config.logger.info(str_print)
 
     # Epochs

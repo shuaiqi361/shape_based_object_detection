@@ -76,7 +76,7 @@ def model_entry(config):
         print('Loading NETNet Detector ......')
         return ATSSNETNetDetector(config['n_classes'], config=config), ATSSNETNetDetectorLoss
     elif config.model['arch'].upper() == 'ATSSSSD':
-        print('Loading ATSS SSD300 Detector ......')
+        print('Loading ATSS SSD Detector ......')
         return ATSSSSD512(config['n_classes'], config=config), ATSSSSD512Loss
     elif config.model['arch'].upper() == 'RETINAATSS50':
         print('Loading ATSS RetinaNet Detector ......')
