@@ -18,6 +18,7 @@ from .ATSS_SSD import ATSSSSD512, ATSSSSD512Loss
 from .RetinaATSS import RetinaATSS34, RetinaATSS50, RetinaATSS101, RetinaATSSNetLoss
 from .RetinaATSSTraffic import RetinaATSS50Traffic, RetinaATSSNetTrafficLoss
 from .RetinaNetTraffic import RetinaNet50Traffic, RetinaNet101Traffic, RetinaTrafficFocalLoss
+from .NETDet import VGGNETNetDetector, VGGNETNetDetectorLoss
 
 
 def model_entry(config):
@@ -69,9 +70,13 @@ def model_entry(config):
     elif config.model['arch'].upper() == 'DARKTRAFFICATTENTION':
         print('Loading RefineDet without attention ......')
         return DarkTrafficAttentionDetector(config['n_classes'], config=config), DarkTrafficAttentionDetectorLoss
-    elif config.model['arch'].upper() == 'NETNET':
+    elif config.model['arch'].upper() == 'NETNET with DarkNet':
         print('Loading NETNet Detector ......')
         return NETNetDetector(config['n_classes'], config=config), NETNetDetectorLoss
+    elif config.model['arch'].upper() == 'VGGNETDET':
+        print('Loading NETNet with VGG16 backbone Detector ......')
+        return VGGNETNetDetector(config['n_classes'], config=config), VGGNETNetDetectorLoss
+
     elif config.model['arch'].upper() == 'ATSSNETNET':
         print('Loading NETNet Detector ......')
         return ATSSNETNetDetector(config['n_classes'], config=config), ATSSNETNetDetectorLoss
