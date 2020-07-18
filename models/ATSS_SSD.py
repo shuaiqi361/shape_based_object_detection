@@ -519,7 +519,7 @@ class ATSSSSD512Loss(nn.Module):
         # self.regression_loss = SmoothL1Loss(reduction='mean')
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+        self.FocalLoss = SigmoidFocalLoss(gamma=2.5, alpha=0.25, config=config)
         # self.FocalLoss = focal_loss
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
