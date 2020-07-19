@@ -493,7 +493,7 @@ class ATSSSSD512Loss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, n_candidates=9):
+    def __init__(self, priors_cxcy, config, n_candidates=16):
         super(ATSSSSD512Loss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
@@ -519,7 +519,7 @@ class ATSSSSD512Loss(nn.Module):
         # self.regression_loss = SmoothL1Loss(reduction='mean')
         self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
         # self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
-        self.FocalLoss = SigmoidFocalLoss(gamma=2.5, alpha=0.25, config=config)
+        self.FocalLoss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
         # self.FocalLoss = focal_loss
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
@@ -528,8 +528,9 @@ class ATSSSSD512Loss(nn.Module):
         :param predicted_locs: list of predicted bboxes for each feature level
         :param boxes: gt
         :param labels: gt
-        :return:
+        :return
         """
+        # print('locs:', predicted_locs[0, 0:2, :], 'scores:', predicted_scores[0, 0:2, :])
         n_levels = len(self.priors_cxcy)
         batch_size = predicted_locs.size(0)
         n_priors = np.sum([prior.size(0) for prior in self.priors_cxcy])
@@ -730,7 +731,8 @@ class ATSSSSD512Loss(nn.Module):
 
         # First, find the loss for all priors
         # conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
-        conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
+        # conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
+        conf_loss = self.FocalLoss(predicted_scores, true_classes) / len(true_classes)
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
