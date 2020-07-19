@@ -493,7 +493,7 @@ class ATSSSSD512Loss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, n_candidates=11):
+    def __init__(self, priors_cxcy, config, n_candidates=9):
         super(ATSSSSD512Loss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
