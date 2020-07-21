@@ -374,7 +374,7 @@ class ATSSSSD512(nn.Module):
         # Since lower level features (conv4_3_feats) have considerably larger scales, we take the L2 norm and rescale
         # Rescale factor is initially set at 20, but is learned for each channel during back-prop
         self.rescale_factors_conv4_3 = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescale_factors_conv4_3, 20.)
+        nn.init.constant_(self.rescale_factors_conv4_3, 10.)
 
         # Prior boxes
         self.priors_cxcy = self.create_prior_boxes()
@@ -444,17 +444,17 @@ class ATSSSSD512(nn.Module):
         #              'conv8_2': [23, 23],
         #              'conv9_2': [12, 12],
         #              'conv10_2': [6, 6]}
-        fmap_dims = {'conv4_3': [100, 100],
-                     'conv7': [50, 50],
-                     'conv8_2': [25, 25],
-                     'conv9_2': [13, 13],
-                     'conv10_2': [7, 7]}
+        fmap_dims = {'conv4_3': [80, 80],
+                     'conv7': [40, 40],
+                     'conv8_2': [20, 20],
+                     'conv9_2': [10, 10],
+                     'conv10_2': [5, 5]}
 
-        obj_scales = {'conv4_3': 0.05,
-                      'conv7': 0.1,
-                      'conv8_2': 0.2,
-                      'conv9_2': 0.4,
-                      'conv10_2': 0.8}
+        obj_scales = {'conv4_3': 0.04,
+                      'conv7': 0.08,
+                      'conv8_2': 0.16,
+                      'conv9_2': 0.32,
+                      'conv10_2': 0.64}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
@@ -493,7 +493,7 @@ class ATSSSSD512Loss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcy, config, n_candidates=16):
+    def __init__(self, priors_cxcy, config, n_candidates=9):
         super(ATSSSSD512Loss, self).__init__()
         self.priors_cxcy = priors_cxcy
         self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
@@ -502,11 +502,11 @@ class ATSSSSD512Loss(nn.Module):
         self.n_classes = config.n_classes - 1
         self.n_candidates = n_candidates
 
-        fmap_dims = {'conv4_3': [100, 100],
-                     'conv7': [50, 50],
-                     'conv8_2': [25, 25],
-                     'conv9_2': [13, 13],
-                     'conv10_2': [7, 7]}
+        fmap_dims = {'conv4_3': [80, 80],
+                     'conv7': [40, 40],
+                     'conv8_2': [20, 20],
+                     'conv9_2': [10, 10],
+                     'conv10_2': [5, 5]}
 
         self.prior_split_points = [0]
         fmap_keys = ['conv4_3', 'conv7', 'conv8_2', 'conv9_2', 'conv10_2']
@@ -590,7 +590,9 @@ class ATSSSSD512Loss(nn.Module):
                 # for each object bbox, find the top_k closest prior boxes
                 _, top_idx_level = torch.topk(-1. * distance, min(self.n_candidates, distance.size(1)), dim=1)
                 # print(distance.size(), top_idx_level.size())
+                # print('Topk distance:', distance[:1, :5])
                 # print(top_idx_level)
+                # exit()
 
                 # level_priors = self.priors_cxcy[level].unsqueeze(0).expand(image_bboxes.size(0),
                 #                                                            self.priors_cxcy[level].size(0), 4)
@@ -602,6 +604,8 @@ class ATSSSSD512Loss(nn.Module):
                 # predicted_pos_locs.append(cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[level]), self.priors_cxcy[level]))
                 overlap_level = find_jaccard_overlap(image_bboxes, self.priors_xy[level])  # overlap for each level
                 positive_overlaps.append(torch.gather(overlap_level, dim=1, index=top_idx_level))
+                # print(positive_overlaps[0])
+                # exit()
                 overlap.append(overlap_level)
 
             positive_overlaps_cat = torch.cat(positive_overlaps, dim=1)  # n_bboxes, n_priors * 6 levels
@@ -610,9 +614,9 @@ class ATSSSSD512Loss(nn.Module):
             overlap_std = torch.std(positive_overlaps_cat, dim=1)
             # print(overlap_mean, overlap_std)
             iou_threshold = overlap_mean + overlap_std  # n_bboxes, for each object, we have one threshold
-            # print([p.size() for p in positive_overlaps])
+            # print([p for p in positive_overlaps])
             # print('threshold: ', iou_threshold)
-            # print('\n')
+            # exit()
 
             # one prior can only be associated to one gt object
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -634,7 +638,8 @@ class ATSSSSD512Loss(nn.Module):
                         current_iou = positive_overlaps[level][ob, c]
                         current_bbox = image_bboxes[ob, :]
                         current_prior = self.priors_cxcy[level][positive_samples_idx[level][ob, c], :]
-                        # print(current_iou, iou_threshold[ob], current_bbox, current_prior)
+                        # print('iou thres, bbox prior', current_iou, iou_threshold[ob], current_bbox, current_prior)
+                        # exit()
 
                         if current_iou > iou_threshold[ob]:
                             if current_bbox[0] < current_prior[0] < current_bbox[2] \
@@ -676,9 +681,12 @@ class ATSSSSD512Loss(nn.Module):
 
                     # if current_max_iou_ob > -1 and current_max_iou > 0. and label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] == 0:
                     if current_max_iou_ob > -1 and current_max_iou > 0.:
+                        # print('Assign positive:', current_max_iou, current_max_iou_ob)
+                        # print(overlap[level][:, positive_samples_idx[level][ob, c]])
+                        # exit()
                         temp_true_locs = image_bboxes[current_max_iou_ob, :].unsqueeze(0)  # (1, 4)
-                        temp_decoded_locs = total_decoded_locs[c, :].unsqueeze(0)
-                        # temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][current_max_iou_ob, c], :].unsqueeze(0)  # (1, 4)
+                        # temp_decoded_locs = total_decoded_locs[c, :].unsqueeze(0)
+                        temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][current_max_iou_ob, c], :].unsqueeze(0)  # (1, 4)
                         label_for_each_prior_per_level[c] = labels[i][current_max_iou_ob]
                         true_locs_per_level.append(temp_true_locs)
                         decoded_locs_per_level.append(temp_decoded_locs)
@@ -716,11 +724,11 @@ class ATSSSSD512Loss(nn.Module):
         # print('Final stored values:')
         # print(true_locs.size(), true_classes.size())
         # print(decoded_locs.size(), predicted_scores.size())
-        # # print('true locs:', true_locs[:15, :])
-        # # print('true classes:', true_classes[0:1000])
-        # print('Number of positive priors:', (true_classes > 0).sum().float())
-        # # print(decoded_locs[:15, :])
-        #
+        # print('true locs:', true_locs[:10, :])
+        # # # print('true classes:', true_classes[0:1000])
+        # # print('Number of positive priors:', (true_classes > 0).sum().float())
+        # print('decoded locs:', decoded_locs[:10, :])
+        # #
         # exit()
 
         # LOCALIZATION LOSS

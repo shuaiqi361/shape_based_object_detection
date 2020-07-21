@@ -143,7 +143,7 @@ def main():
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOC':
         train_dataset = PascalVOCDataset(train_data_folder, split='train', config=config)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False,
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=False, drop_last=True)
         test_dataset = PascalVOCDataset(val_data_folder, split='val', config=config)
