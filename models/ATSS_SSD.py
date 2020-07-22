@@ -450,11 +450,11 @@ class ATSSSSD512(nn.Module):
                      'conv9_2': [10, 10],
                      'conv10_2': [5, 5]}
 
-        obj_scales = {'conv4_3': 0.04,
-                      'conv7': 0.08,
-                      'conv8_2': 0.16,
-                      'conv9_2': 0.32,
-                      'conv10_2': 0.64}
+        obj_scales = {'conv4_3': 0.02,
+                      'conv7': 0.04,
+                      'conv8_2': 0.08,
+                      'conv9_2': 0.16,
+                      'conv10_2': 0.32}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
@@ -739,8 +739,8 @@ class ATSSSSD512Loss(nn.Module):
 
         # First, find the loss for all priors
         # conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
-        # conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
-        conf_loss = self.FocalLoss(predicted_scores, true_classes) / len(true_classes)
+        conf_loss = self.FocalLoss(predicted_scores, true_classes) / n_positives
+        # conf_loss = self.FocalLoss(predicted_scores, true_classes) / len(true_classes)
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
