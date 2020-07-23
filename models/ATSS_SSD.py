@@ -450,11 +450,11 @@ class ATSSSSD512(nn.Module):
                      'conv9_2': [10, 10],
                      'conv10_2': [5, 5]}
 
-        obj_scales = {'conv4_3': 0.02,
-                      'conv7': 0.04,
-                      'conv8_2': 0.08,
-                      'conv9_2': 0.16,
-                      'conv10_2': 0.32}
+        obj_scales = {'conv4_3': 0.03,
+                      'conv7': 0.06,
+                      'conv8_2': 0.12,
+                      'conv9_2': 0.24,
+                      'conv10_2': 0.48}
 
         aspect_ratios = {'conv4_3': [1.],
                          'conv7': [1.],
@@ -687,7 +687,7 @@ class ATSSSSD512Loss(nn.Module):
                         temp_true_locs = image_bboxes[current_max_iou_ob, :].unsqueeze(0)  # (1, 4)
                         # temp_decoded_locs = total_decoded_locs[c, :].unsqueeze(0)
                         temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][current_max_iou_ob, c], :].unsqueeze(0)  # (1, 4)
-                        label_for_each_prior_per_level[c] = labels[i][current_max_iou_ob]
+                        label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] = labels[i][current_max_iou_ob]
                         true_locs_per_level.append(temp_true_locs)
                         decoded_locs_per_level.append(temp_decoded_locs)
                         # print(level, 'Assignment for labels: ', labels[i][current_max_iou_ob], ' at ', positive_samples_idx[level][current_max_iou_ob, c], ' with length ', len(true_locs_per_level))
