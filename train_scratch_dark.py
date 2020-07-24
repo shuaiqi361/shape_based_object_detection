@@ -138,7 +138,7 @@ def main():
                                                    collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                    pin_memory=True, drop_last=True)
         test_dataset = COCO17Dataset(val_data_folder, split='val', config=config)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=4, shuffle=False,
                                                   collate_fn=test_dataset.collate_fn, num_workers=workers,
                                                   pin_memory=False)
     elif config.data_name.upper() == 'VOC':

@@ -221,9 +221,12 @@ class RetinaATSSNet(nn.Module):
         # self.anchors_cxcy = self.create_anchors()
         # self.priors_cxcy = self.anchors_cxcy
 
-        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2], 150)
-        self.regressionModel = RegressionModel(150, num_anchors=1)
-        self.classificationModel = ClassificationModel(150, num_anchors=1, num_classes=n_classes)
+        self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2], 256)
+        self.regressionModel = RegressionModel(256, num_anchors=1)
+        self.classificationModel = ClassificationModel(256, num_anchors=1, num_classes=n_classes)
+
+        # Prior boxes
+        self.priors_cxcy = self.create_prior_boxes()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -242,7 +245,7 @@ class RetinaATSSNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-        self.freeze_bn()
+        # self.freeze_bn()
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -282,11 +285,11 @@ class RetinaATSSNet(nn.Module):
 
         features = self.fpn(x2, x3, x4)
 
-        fmap_dims = {'c3': [features[0].size(2), features[0].size(3)],
-                     'c4': [features[1].size(2), features[1].size(3)],
-                     'c5': [features[2].size(2), features[2].size(3)],
-                     'c6': [features[3].size(2), features[3].size(3)],
-                     'c7': [features[4].size(2), features[4].size(3)]}
+        # fmap_dims = {'c3': [features[0].size(2), features[0].size(3)],
+        #              'c4': [features[1].size(2), features[1].size(3)],
+        #              'c5': [features[2].size(2), features[2].size(3)],
+        #              'c6': [features[3].size(2), features[3].size(3)],
+        #              'c7': [features[4].size(2), features[4].size(3)]}
         # print('Output shapes:')
         # for feat in features:
         #     print(feat.size())
@@ -294,45 +297,27 @@ class RetinaATSSNet(nn.Module):
         locs = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
         class_scores = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
 
-        return locs, class_scores, fmap_dims
+        return locs, class_scores
 
-
-class RetinaATSSNetLoss(nn.Module):
-    """
-    The RetinaFocalLoss, a loss function for object detection from RetinaNet.
-    This is a combination of:
-    (1) a localization loss for the predicted locations of the boxes, and
-    (2) a confidence loss for the predicted class scores.
-    """
-
-    def __init__(self, config, n_candidates=9):
-        super(RetinaATSSNetLoss, self).__init__()
-        self.n_candidates = n_candidates
-        self.alpha = config.reg_weights
-        self.device = config.device
-        self.n_classes = config.n_classes - 1
-
-        self.regression_loss = SmoothL1Loss(reduction='mean')
-        # self.Diou_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Diou')
-        self.classification_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
-
-    def create_anchors(self, fmap_dims):
+    def create_prior_boxes(self):
         """
-        Create the anchor boxes as in RetinaNet
-        :return: prior boxes in center-size coordinates
-        """
-        # fmap_dims = {'c3': 64,
-        #              'c4': 32,
-        #              'c5': 16,
-        #              'c6': 8,
-        #              'c7': 4}
+        Create the 22536 prior (default) boxes for the SSD300, as defined in the paper.
 
-        obj_scales = {'c3': 0.06,
-                      'c4': 0.12,
-                      'c5': 0.24,
-                      'c6': 0.48,
-                      'c7': 0.96}
-        scale_factor = [1.]
+        :return: prior boxes in center-size coordinates, a tensor of dimensions (22536, 4)
+        """
+
+        fmap_dims = {'c3': [100, 100],
+                     'c4': [50, 50],
+                     'c5': [25, 25],
+                     'c6': [13, 13],
+                     'c7': [7, 7]}
+
+        obj_scales = {'c3': 0.03,
+                      'c4': 0.06,
+                      'c5': 0.12,
+                      'c6': 0.24,
+                      'c7': 0.48}
+
         aspect_ratios = {'c3': [1.],
                          'c4': [1.],
                          'c5': [1.],
@@ -342,6 +327,7 @@ class RetinaATSSNetLoss(nn.Module):
         fmaps = list(fmap_dims.keys())
 
         prior_boxes = []
+        scale_factor = [1.]
         for k, fmap in enumerate(fmaps):
             temp_prior_boxes = []
             for i in range(fmap_dims[fmap][0]):
@@ -360,7 +346,40 @@ class RetinaATSSNetLoss(nn.Module):
 
         return prior_boxes
 
-    def forward(self, predicted_locs, predicted_scores, boxes, labels, fmap_dims):
+
+class RetinaATSSNetLoss(nn.Module):
+    """
+    The RetinaFocalLoss, a loss function for object detection from RetinaNet.
+    This is a combination of:
+    (1) a localization loss for the predicted locations of the boxes, and
+    (2) a confidence loss for the predicted class scores.
+    """
+
+    def __init__(self, priors_cxcy, config, n_candidates=9):
+        super(RetinaATSSNetLoss, self).__init__()
+        self.priors_cxcy = priors_cxcy
+        self.priors_xy = [cxcy_to_xy(prior) for prior in self.priors_cxcy]
+        self.n_candidates = n_candidates
+        self.alpha = config.reg_weights
+        self.device = config.device
+        self.n_classes = config.n_classes - 1
+
+        fmap_dims = {'c3': [100, 100],
+                     'c4': [50, 50],
+                     'c5': [25, 25],
+                     'c6': [13, 13],
+                     'c7': [7, 7]}
+
+        self.prior_split_points = [0]
+        fmap_keys = ['c3', 'c4', 'c5', 'c6', 'c7']
+        for k in fmap_keys:
+            self.prior_split_points.append(self.prior_split_points[-1] + fmap_dims[k][0] * fmap_dims[k][1])
+
+        # self.regression_loss = SmoothL1Loss(reduction='mean')
+        self.regression_loss = IouLoss(pred_mode='Corner', reduce='mean', losstype='Ciou')
+        self.classification_loss = SigmoidFocalLoss(gamma=2.0, alpha=0.25, config=config)
+
+    def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
         Forward propagation.
 
@@ -371,17 +390,10 @@ class RetinaATSSNetLoss(nn.Module):
         :param labels: true object labels, a list of N tensors
         :return: multibox loss, a scalar
         """
-        priors_cxcy = self.create_anchors(fmap_dims)
-        priors_xy = [cxcy_to_xy(prior) for prior in priors_cxcy]
-        prior_split_points = [0]
-        for _, value in fmap_dims.items():
-            prior_split_points.append(prior_split_points[-1] + value[0] * value[1])
+        n_levels = len(self.priors_cxcy)
         batch_size = predicted_locs.size(0)
-        n_levels = len(fmap_dims)
-        # print(prior_split_points)
-        # print(fmap_dims)
 
-        decoded_locs = list()  # length is the batch size for all 4 lists
+        decoded_locs = list()  # length is the batch size
         true_locs = list()
         true_classes = list()
         predicted_class_scores = list()
@@ -389,13 +401,15 @@ class RetinaATSSNetLoss(nn.Module):
         # For each image
         for i in range(batch_size):
             image_bboxes = boxes[i]
+            # print('image_boxes size: ', image_bboxes.size())
             batch_split_predicted_locs = []
             batch_split_predicted_scores = []
-            for s in range(len(priors_cxcy)):  # get the prediction for each level
+            # split the predictions according to the feature pyramid dimension
+            for s in range(len(self.priors_cxcy)):
                 batch_split_predicted_locs.append(
-                    predicted_locs[i][prior_split_points[s]:prior_split_points[s + 1], :])
+                    predicted_locs[i][self.prior_split_points[s]:self.prior_split_points[s + 1], :])
                 batch_split_predicted_scores.append(
-                    predicted_scores[i][prior_split_points[s]:prior_split_points[s + 1], :])
+                    predicted_scores[i][self.prior_split_points[s]:self.prior_split_points[s + 1], :])
 
             # print('Lenght of priors:', len(self.priors_cxcy))
             # print('Original shape', predicted_locs[i].size())
@@ -403,30 +417,42 @@ class RetinaATSSNetLoss(nn.Module):
             # exit()
             # positive_samples = list()
             # predicted_pos_locs = list()
-            # find all positive samples that are close to each gt object
+            # candidates for positive samples, use to calculate the IOU threshold
             positive_samples_idx = list()
             positive_overlaps = list()
-            # overlap = list()
+            overlap = list()  # for all
             for level in range(n_levels):
-                distance = find_distance(xy_to_cxcy(image_bboxes), priors_cxcy[level])  # n_bboxes, n_priors
+                distance = find_distance(xy_to_cxcy(image_bboxes), self.priors_cxcy[level])  # n_bboxes, n_priors
                 # for each object bbox, find the top_k closest prior boxes
                 _, top_idx_level = torch.topk(-1. * distance, min(self.n_candidates, distance.size(1)), dim=1)
                 # print(distance.size(), top_idx_level.size())
+                # print('Topk distance:', distance[:1, :5])
+                # print(top_idx_level)
+                # exit()
 
+                # level_priors = self.priors_cxcy[level].unsqueeze(0).expand(image_bboxes.size(0),
+                #                                                            self.priors_cxcy[level].size(0), 4)
+                # print('level_priors: ', level_priors.size())
+                # level_predictions = predicted_locs[i][level].unsqueeze(0).expand(image_bboxes.size(0),
+                #                                             self.priors_cxcy[level].size(0))
+                # positive_samples.append(level_priors[top_idx_level])
                 positive_samples_idx.append(top_idx_level)
-                overlap_level = find_jaccard_overlap(image_bboxes, priors_xy[level])  # overlap for each level
+                # predicted_pos_locs.append(cxcy_to_xy(gcxgcy_to_cxcy(predicted_locs[level]), self.priors_cxcy[level]))
+                overlap_level = find_jaccard_overlap(image_bboxes, self.priors_xy[level])  # overlap for each level
                 positive_overlaps.append(torch.gather(overlap_level, dim=1, index=top_idx_level))
-                # overlap.append(overlap_level)
+                # print(positive_overlaps[0])
+                # exit()
+                overlap.append(overlap_level)
 
             positive_overlaps_cat = torch.cat(positive_overlaps, dim=1)  # n_bboxes, n_priors * 6 levels
             # print('positive_overlaps_cat shape: ', positive_overlaps_cat.size())
             overlap_mean = torch.mean(positive_overlaps_cat, dim=1)
             overlap_std = torch.std(positive_overlaps_cat, dim=1)
             # print(overlap_mean, overlap_std)
-            iou_threshold = overlap_mean + overlap_std  # n_objects, for each object, we have one threshold
-            del positive_overlaps_cat
-            torch.cuda.empty_cache()
-
+            iou_threshold = overlap_mean + overlap_std  # n_bboxes, for each object, we have one threshold
+            # print([p for p in positive_overlaps])
+            # print('threshold: ', iou_threshold)
+            # exit()
 
             # one prior can only be associated to one gt object
             # For each prior, find the object that has the maximum overlap, return [value, indices]
@@ -436,61 +462,85 @@ class RetinaATSSNetLoss(nn.Module):
             positive_priors = list()  # For all levels
             decoded_locs_level = list()
             for level in range(n_levels):
-                positive_priors_per_level = torch.zeros((image_bboxes.size(0), priors_cxcy[level].size(0)),
-                                                        dtype=torch.uint8).to(self.device)  # indexing, (n_ob, n_prior)
-
+                positive_priors_per_level = torch.zeros((image_bboxes.size(0), self.priors_cxcy[level].size(0)),
+                                                        dtype=torch.uint8).to(self.device)  # indexing, (n,)
+                # print(positive_priors_per_level.size())
+                # print(level, 'total decoded priors shape: ', total_decoded_locs.size())
+                # overlap_for_each_prior, object_for_each_prior = overlap[level].max(dim=0)
+                # overlap_for_each_object, prior_for_each_object = overlap[level].max(dim=1)
                 for ob in range(image_bboxes.size(0)):
                     for c in range(len(positive_samples_idx[level][ob])):
                         # print(ob, c, 'Range for c: ', len(positive_samples_idx[level][ob]))
                         current_iou = positive_overlaps[level][ob, c]
                         current_bbox = image_bboxes[ob, :]
-                        current_prior = priors_cxcy[level][positive_samples_idx[level][ob, c], :]
-                        # print(current_iou, iou_threshold[ob], current_bbox, current_prior)
+                        current_prior = self.priors_cxcy[level][positive_samples_idx[level][ob, c], :]
+                        # print('iou thres, bbox prior', current_iou, iou_threshold[ob], current_bbox, current_prior)
+                        # exit()
 
-                        if current_iou > iou_threshold[ob]:  # the centre of the prior within the gt bbox
-                            if current_bbox[0] <= current_prior[0] <= current_bbox[2] \
-                                    and current_bbox[1] <= current_prior[1] <= current_bbox[3]:
+                        if current_iou > iou_threshold[ob]:
+                            if current_bbox[0] < current_prior[0] < current_bbox[2] \
+                                    and current_bbox[1] < current_prior[1] < current_bbox[3]:
+                                # print('------------------------------------------------------------------')
                                 positive_priors_per_level[ob, positive_samples_idx[level][ob, c]] = 1
-
+                                # if current_iou == overlap_for_each_prior[positive_samples_idx[level][ob, c]]:
+                                # print(label_for_each_prior_per_level[positive_samples_idx[level][ob, c]])
+                                # label_for_each_prior_per_level[positive_samples_idx[level][ob, c]] = labels[i][ob]
+                                # print(label_for_each_prior_per_level[positive_samples_idx[level][ob, c]])
+                                # print('Details:')
+                                # print(positive_samples_idx[level][ob, c], labels[i][ob])
+                                # exit()
                 positive_priors.append(positive_priors_per_level)
 
             for level in range(n_levels):  # this is the loop for find the best object for each prior,
                 # because one prior could match with more than one objects
-                label_for_each_prior_per_level = torch.zeros((priors_cxcy[level].size(0)),
+                label_for_each_prior_per_level = torch.zeros((self.priors_cxcy[level].size(0)),
                                                              dtype=torch.long).to(self.device)
-                true_locs_per_level = list()
+                true_locs_per_level = list()  # only for positive candidates in the predictions
                 decoded_locs_per_level = list()
-                # print('priors per level:', batch_split_predicted_locs[level].size(), priors_cxcy[level].size())
                 total_decoded_locs = cxcy_to_xy(
-                    gcxgcy_to_cxcy(batch_split_predicted_locs[level], priors_cxcy[level]))
+                    gcxgcy_to_cxcy(batch_split_predicted_locs[level], self.priors_cxcy[level]))
 
                 for c in range(positive_samples_idx[level].size(1)):
-                    current_max_iou = -1.
-                    current_max_iou_ob = -1
+                    # for c in range(self.priors_cxcy[level].size(0)):  # loop over each prior in each level
+                    current_max_iou = 0.
+                    current_max_iou_ob = -1  # index for rows: (n_ob, n_prior)
                     for ob in range(image_bboxes.size(0)):
                         # print(positive_samples_idx[level].size(1), 'positive_priors_per_level shape: ', positive_priors_per_level.size())
                         # print('positive_priors size per level:', positive_priors[level].size())
                         # print(ob)
                         # print(positive_samples_idx[level][ob, c])
                         if positive_priors[level][ob, positive_samples_idx[level][ob, c]] == 1:
-                            if positive_overlaps[level][ob, c] > current_max_iou:
+                            # if positive_priors[level][ob, c] == 1:
+                            if overlap[level][ob, positive_samples_idx[level][ob, c]] > current_max_iou:
                                 current_max_iou_ob = ob
-                                current_max_iou = positive_overlaps[level][ob, c]
+                                current_max_iou = overlap[level][ob, positive_samples_idx[level][ob, c]]
 
-                    if current_max_iou_ob > -1 and label_for_each_prior_per_level[
-                        positive_samples_idx[level][current_max_iou_ob, c]] == 0:
+                    # if current_max_iou_ob > -1 and current_max_iou > 0. and label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] == 0:
+                    if current_max_iou_ob > -1 and current_max_iou > 0.:
+                        # print('Assign positive:', current_max_iou, current_max_iou_ob)
+                        # print(overlap[level][:, positive_samples_idx[level][ob, c]])
+                        # exit()
                         temp_true_locs = image_bboxes[current_max_iou_ob, :].unsqueeze(0)  # (1, 4)
-                        temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][current_max_iou_ob,
-                                                                                           c], :].unsqueeze(0)  # (1, 4)
-                        label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] \
-                            = labels[i][current_max_iou_ob]
+                        # temp_decoded_locs = total_decoded_locs[c, :].unsqueeze(0)
+                        temp_decoded_locs = total_decoded_locs[positive_samples_idx[level][current_max_iou_ob, c],
+                                            :].unsqueeze(0)  # (1, 4)
+                        label_for_each_prior_per_level[positive_samples_idx[level][current_max_iou_ob, c]] = labels[i][
+                            current_max_iou_ob]
                         true_locs_per_level.append(temp_true_locs)
                         decoded_locs_per_level.append(temp_decoded_locs)
+                        # print(level, 'Assignment for labels: ', labels[i][current_max_iou_ob], ' at ', positive_samples_idx[level][current_max_iou_ob, c], ' with length ', len(true_locs_per_level))
 
+                # if len(true_locs_per_level) > 0:
+                #     print('show: ', (label_for_each_prior_per_level > 0).sum().float(), len(true_locs_per_level), torch.cat(true_locs_per_level, dim=0).size())
+                #     assert (label_for_each_prior_per_level > 0).sum().float() == len(true_locs_per_level)
+                # print(label_for_each_prior_per_level.size(), len(self.priors_cxcy[level]))
+                # assert label_for_each_prior_per_level.size(0) == self.priors_cxcy[level].size(0)
                 if len(true_locs_per_level) > 0:
                     true_locs_level.append(torch.cat(true_locs_per_level, dim=0).view(-1, 4))  # (1, n_l * 4)
                     decoded_locs_level.append(torch.cat(decoded_locs_per_level, dim=0).view(-1, 4))
-
+                    # assert torch.cat(decoded_locs_per_level, dim=0).view(-1, 4).size(0) == torch.cat(
+                    #     true_locs_per_level,
+                    #     dim=0).view(-1, 4).size(0)
                 true_classes_level.append(label_for_each_prior_per_level)
                 # assert len(label_for_each_prior_per_level) == len(batch_split_predicted_locs[level])
 
@@ -499,6 +549,7 @@ class RetinaATSSNetLoss(nn.Module):
             predicted_class_scores.append(torch.cat(batch_split_predicted_scores, dim=0))
             if len(true_locs_level) > 0:
                 true_locs.append(torch.cat(true_locs_level, dim=0))  # batch_size, n_pos, 4
+                # print(odm_locs.size(), decoded_arm_locs.size())
                 decoded_locs.append(torch.cat(decoded_locs_level, dim=0))
 
         # assemble all samples from batches
@@ -511,11 +562,11 @@ class RetinaATSSNetLoss(nn.Module):
         # print('Final stored values:')
         # print(true_locs.size(), true_classes.size())
         # print(decoded_locs.size(), predicted_scores.size())
-        # print('true locs:', true_locs[:15, :])
-        # print('true classes:', true_classes[0:1000])
-        # print((true_classes > 0).sum().float())
-        # print(decoded_locs[:15, :])
-        #
+        # print('true locs:', true_locs[:10, :])
+        # # # print('true classes:', true_classes[0:1000])
+        # # print('Number of positive priors:', (true_classes > 0).sum().float())
+        # print('decoded locs:', decoded_locs[:10, :])
+        # #
         # exit()
 
         # LOCALIZATION LOSS
@@ -525,8 +576,8 @@ class RetinaATSSNetLoss(nn.Module):
         n_positives = positive_priors.sum().float()
 
         # First, find the loss for all priors
-        # conf_loss = self.FocalLoss(predicted_scores, true_classes, device=self.device) / true_classes.size(0) * 1.
         conf_loss = self.classification_loss(predicted_scores, true_classes) / n_positives
+        # conf_loss = self.FocalLoss(predicted_scores, true_classes) / len(true_classes)
 
         # TOTAL LOSS
         return conf_loss + self.alpha * loc_loss
